@@ -1,6 +1,6 @@
 # PharmXAI-3D: Explainable SciML for Protein-Ligand Binding Affinity
 
-PharmXAI-3D is still a work in progress, but the aim is to be an advanced Scientific Machine Learning (SciML) pipeline engineered to predict absolute protein-ligand binding affinities ($pK_d$) directly from raw 3D crystallographic coordinates, utilizing SE(3)-equivariant continuous filter convolutions and physics-targeted multi-task regularization.
+PharmXAI-3D is still a work in progress, but the aim is to be an advanced Scientific Machine Learning (SciML) pipeline engineered to predict absolute protein-ligand binding affinities ($pK_d$) directly from raw 3D crystallographic coordinates, utilizing SE(3)-invariant continuous filter convolutions and physics-targeted multi-task regularization.
 
 ## 🚀 Core Utilities & Applications
 
