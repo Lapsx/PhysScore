@@ -1,0 +1,69 @@
+Processing...
+Iniciando o processamento dos arquivos brutos (.pdb/.sdf) em lote...
+Mapeando Afinidades Termodinâmicas experimentais do arquivo INDEX...
+Rótulos (-logK) mapeados para 19037 complexos.
+Encontrados 19046 complexos na pasta raw/. Processando...
+[+] Retomando: 2000 complexos já processados em ./processed/parciais. Apague essa pasta para começar do zero.
+  [  250/19046]  2000 grafos | RSS    605 MB |   0.0 min decorridos, ~1 min restantes | atual: 1bzh
+  [  500/19046]  2000 grafos | RSS    605 MB |   0.0 min decorridos, ~0 min restantes | atual: 1ew9
+  [  750/19046]  2000 grafos | RSS    605 MB |   0.0 min decorridos, ~0 min restantes | atual: 1h0w
+  [ 1000/19046]  2000 grafos | RSS    605 MB |   0.0 min decorridos, ~0 min restantes | atual: 1jlq
+  [ 1250/19046]  2000 grafos | RSS    605 MB |   0.0 min decorridos, ~0 min restantes | atual: 1mkd
+  [ 1500/19046]  2000 grafos | RSS    605 MB |   0.0 min decorridos, ~0 min restantes | atual: 1o86
+  [ 1750/19046]  2000 grafos | RSS    605 MB |   0.0 min decorridos, ~0 min restantes | atual: 1qf2
+  [ 2000/19046]  2000 grafos | RSS    605 MB |   0.0 min decorridos, ~0 min restantes | atual: 1tcx
+  [ 2250/19046]  2249 grafos | RSS    681 MB |   3.5 min decorridos, ~26 min restantes | atual: 1w2h
+  [ 2500/19046]  2499 grafos | RSS    718 MB |   6.7 min decorridos, ~44 min restantes | atual: 1ysg
+  [ 2750/19046]  2749 grafos | RSS    743 MB |  11.3 min decorridos, ~67 min restantes | atual: 2bdl
+  [ 3000/19046]  2999 grafos | RSS    746 MB |  15.8 min decorridos, ~84 min restantes | atual: 2euk
+  [ 3250/19046]  3249 grafos | RSS    806 MB |  24.7 min decorridos, ~120 min restantes | atual: 2h2j
+  [ 3500/19046]  3499 grafos | RSS    807 MB |  30.6 min decorridos, ~136 min restantes | atual: 2jh0
+  [ 3750/19046]  3749 grafos | RSS    810 MB |  32.7 min decorridos, ~133 min restantes | atual: 2oc9
+  [ 4000/19046]  3999 grafos | RSS    810 MB |  37.3 min decorridos, ~140 min restantes | atual: 2q88
+  [ 4250/19046]  4249 grafos | RSS    813 MB |  42.6 min decorridos, ~148 min restantes | atual: 2std
+  [ 4500/19046]  4499 grafos | RSS    816 MB |  47.6 min decorridos, ~154 min restantes | atual: 2w6m
+  [ 4750/19046]  4749 grafos | RSS    833 MB |  55.1 min decorridos, ~166 min restantes | atual: 2xeg
+  [ 5000/19046]  4999 grafos | RSS    833 MB |  60.4 min decorridos, ~170 min restantes | atual: 2yjb
+  [ 5250/19046]  5249 grafos | RSS    849 MB |  67.5 min decorridos, ~177 min restantes | atual: 3avb
+  [ 5500/19046]  5499 grafos | RSS    898 MB |  77.8 min decorridos, ~192 min restantes | atual: 3ck7
+  [ 5750/19046]  5749 grafos | RSS    910 MB |  86.1 min decorridos, ~199 min restantes | atual: 3e7o
+  [ 6000/19046]  5999 grafos | RSS    926 MB | 100.0 min decorridos, ~217 min restantes | atual: 3ft5
+  [ 6250/19046]  6248 grafos | RSS    929 MB | 108.3 min decorridos, ~222 min restantes | atual: 3hc8
+  [ 6500/19046]  6498 grafos | RSS    934 MB | 117.2 min decorridos, ~226 min restantes | atual: 3iww
+  [ 6750/19046]  6748 grafos | RSS    939 MB | 126.1 min decorridos, ~230 min restantes | atual: 3lc3
+  [ 7000/19046]  6997 grafos | RSS    967 MB | 138.0 min decorridos, ~237 min restantes | atual: 3n49
+  [ 7250/19046]  7247 grafos | RSS    971 MB | 146.6 min decorridos, ~239 min restantes | atual: 3ovz
+  [ 7500/19046]  7497 grafos | RSS    971 MB | 156.9 min decorridos, ~242 min restantes | atual: 3qi1
+  [ 7750/19046]  7747 grafos | RSS    975 MB | 164.8 min decorridos, ~240 min restantes | atual: 3ryz
+  [ 8000/19046]  7997 grafos | RSS   1012 MB | 186.1 min decorridos, ~257 min restantes | atual: 3tf7
+  [ 8250/19046]  8247 grafos | RSS   1014 MB | 195.7 min decorridos, ~256 min restantes | atual: 3uza
+  [ 8500/19046]  8497 grafos | RSS   1027 MB | 211.2 min decorridos, ~262 min restantes | atual: 3wvm
+  [ 8750/19046]  8747 grafos | RSS   1032 MB | 222.7 min decorridos, ~262 min restantes | atual: 4amy
+  [ 9000/19046]  8997 grafos | RSS   1031 MB | 235.9 min decorridos, ~263 min restantes | atual: 4bjc
+  [ 9250/19046]  9247 grafos | RSS   1036 MB | 247.0 min decorridos, ~262 min restantes | atual: 4d2v
+  [ 9500/19046]  9497 grafos | RSS   1035 MB | 256.7 min decorridos, ~258 min restantes | atual: 4ehm
+  [ 9750/19046]  9747 grafos | RSS   1051 MB | 270.1 min decorridos, ~258 min restantes | atual: 4g8l
+  [10000/19046]  9997 grafos | RSS   1051 MB | 280.5 min decorridos, ~254 min restantes | atual: 4hxm
+  [10250/19046] 10247 grafos | RSS   1054 MB | 290.5 min decorridos, ~249 min restantes | atual: 4j78
+  [10500/19046] 10497 grafos | RSS   1082 MB | 305.9 min decorridos, ~249 min restantes | atual: 4kn1
+  [10750/19046] 10747 grafos | RSS   1134 MB | 320.0 min decorridos, ~247 min restantes | atual: 4m13
+  [11000/19046] 10997 grafos | RSS   1134 MB | 332.2 min decorridos, ~243 min restantes | atual: 4n9d
+  [11250/19046] 11245 grafos | RSS   1138 MB | 342.6 min decorridos, ~237 min restantes | atual: 4okp
+  [11500/19046] 11494 grafos | RSS   1138 MB | 356.4 min decorridos, ~234 min restantes | atual: 4q1c
+  [11750/19046] 11744 grafos | RSS   1170 MB | 370.8 min decorridos, ~230 min restantes | atual: 4r91
+  [12000/19046] 11994 grafos | RSS   1170 MB | 384.3 min decorridos, ~226 min restantes | atual: 4ua8
+  [12250/19046] 12244 grafos | RSS   1174 MB | 395.6 min decorridos, ~219 min restantes | atual: 4wsk
+  [12500/19046] 12494 grafos | RSS   1175 MB | 408.2 min decorridos, ~214 min restantes | atual: 4yab
+  [12750/19046] 12744 grafos | RSS   1186 MB | 424.6 min decorridos, ~210 min restantes | atual: 4zt2
+  [13000/19046] 12994 grafos | RSS   1187 MB | 439.2 min decorridos, ~204 min restantes | atual: 5am6
+  [13250/19046] 13244 grafos | RSS   1197 MB | 450.4 min decorridos, ~197 min restantes | atual: 5cxz
+  [13500/19046] 13494 grafos | RSS   1202 MB | 462.6 min decorridos, ~190 min restantes | atual: 5efh
+  [13750/19046] 13744 grafos | RSS   1206 MB | 472.4 min decorridos, ~182 min restantes | atual: 5fi6
+  [14000/19046] 13994 grafos | RSS   1226 MB | 490.5 min decorridos, ~177 min restantes | atual: 5hj9
+  [14250/19046] 14244 grafos | RSS   1244 MB | 503.9 min decorridos, ~170 min restantes | atual: 5j4v
+  [14500/19046] 14494 grafos | RSS   1250 MB | 519.6 min decorridos, ~163 min restantes | atual: 5kmf
+  [14750/19046] 14744 grafos | RSS   1254 MB | 535.9 min decorridos, ~156 min restantes | atual: 5m2v
+  [15000/19046] 14994 grafos | RSS   1255 MB | 542.6 min decorridos, ~146 min restantes | atual: 5ne3
+  [15250/19046] 15244 grafos | RSS   1282 MB | 552.9 min decorridos, ~138 min restantes | atual: 5oq5
+  [15500/19046] 15494 grafos | RSS   1285 MB | 566.4 min decorridos, ~130 min restantes | atual: 5t8e
+  [15750/19046] 15744 grafos | RSS   1315 MB | 582.8 min decorridos, ~122 min restantes | atual: 5uhi

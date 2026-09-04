@@ -1,0 +1,81 @@
+Checkpoint de saída: pharm_model_weights_readout.pth
+🔥 Treinando em: cuda
+Carregando o Banco de Dados...
+Separando Treino (General), Validação (Refined) e Teste (CASF core)...
+Total: 19037 | Treino: 13711 | Validação: 5041 | Teste (CASF): 285
+Iniciando o treinamento por até 300 épocas (parada antecipada após 30 sem melhora)...
+Época [001/300] | Train pKd: 3.6794 | Train Phys: 1.4930 | Val pKd: 3.2946 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 3.2946)
+Época [002/300] | Train pKd: 2.8481 | Train Phys: 1.3714 | Val pKd: 3.0655 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 3.0655)
+Época [003/300] | Train pKd: 2.6052 | Train Phys: 1.0826 | Val pKd: 2.8189 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.8189)
+Época [004/300] | Train pKd: 2.4477 | Train Phys: 0.8611 | Val pKd: 2.8660 | LR: 0.001000
+Época [005/300] | Train pKd: 2.3611 | Train Phys: 0.7395 | Val pKd: 2.7194 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.7194)
+Época [006/300] | Train pKd: 2.2789 | Train Phys: 0.6064 | Val pKd: 3.0542 | LR: 0.001000
+Época [007/300] | Train pKd: 2.2009 | Train Phys: 0.5531 | Val pKd: 2.3889 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.3889)
+Época [008/300] | Train pKd: 2.1886 | Train Phys: 0.4936 | Val pKd: 2.4205 | LR: 0.001000
+Época [009/300] | Train pKd: 2.1041 | Train Phys: 0.4251 | Val pKd: 2.3033 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.3033)
+Época [010/300] | Train pKd: 2.0428 | Train Phys: 0.4184 | Val pKd: 2.6105 | LR: 0.001000
+Época [011/300] | Train pKd: 2.0091 | Train Phys: 0.3886 | Val pKd: 2.2725 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.2725)
+Época [012/300] | Train pKd: 1.9656 | Train Phys: 0.3799 | Val pKd: 2.2409 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.2409)
+Época [013/300] | Train pKd: 1.8990 | Train Phys: 0.3863 | Val pKd: 2.1848 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.1848)
+Época [014/300] | Train pKd: 1.8261 | Train Phys: 0.3707 | Val pKd: 2.1824 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.1824)
+Época [015/300] | Train pKd: 1.7844 | Train Phys: 0.3449 | Val pKd: 2.2171 | LR: 0.001000
+Época [016/300] | Train pKd: 1.7458 | Train Phys: 0.3401 | Val pKd: 2.3253 | LR: 0.001000
+Época [017/300] | Train pKd: 1.6949 | Train Phys: 0.3360 | Val pKd: 2.2983 | LR: 0.001000
+Época [018/300] | Train pKd: 1.6601 | Train Phys: 0.3510 | Val pKd: 2.2668 | LR: 0.001000
+Época [019/300] | Train pKd: 1.6207 | Train Phys: 0.3138 | Val pKd: 2.2676 | LR: 0.001000
+Época [020/300] | Train pKd: 1.5675 | Train Phys: 0.3358 | Val pKd: 2.3110 | LR: 0.001000
+Época [021/300] | Train pKd: 1.4826 | Train Phys: 0.3089 | Val pKd: 2.0981 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.0981)
+Época [022/300] | Train pKd: 1.4436 | Train Phys: 0.3148 | Val pKd: 2.2198 | LR: 0.001000
+Época [023/300] | Train pKd: 1.3812 | Train Phys: 0.3262 | Val pKd: 2.1802 | LR: 0.001000
+Época [024/300] | Train pKd: 1.3225 | Train Phys: 0.2932 | Val pKd: 2.2676 | LR: 0.001000
+Época [025/300] | Train pKd: 1.2717 | Train Phys: 0.2878 | Val pKd: 2.2865 | LR: 0.001000
+Época [026/300] | Train pKd: 1.2039 | Train Phys: 0.2893 | Val pKd: 2.2704 | LR: 0.001000
+Época [027/300] | Train pKd: 1.1815 | Train Phys: 0.2848 | Val pKd: 2.1680 | LR: 0.001000
+Época [028/300] | Train pKd: 1.1385 | Train Phys: 0.2649 | Val pKd: 2.2378 | LR: 0.001000
+Época [029/300] | Train pKd: 1.0836 | Train Phys: 0.2573 | Val pKd: 2.2972 | LR: 0.001000
+Época [030/300] | Train pKd: 1.0194 | Train Phys: 0.2609 | Val pKd: 2.3010 | LR: 0.001000
+Época [031/300] | Train pKd: 0.9825 | Train Phys: 0.2671 | Val pKd: 2.2577 | LR: 0.001000
+Época [032/300] | Train pKd: 0.9634 | Train Phys: 0.2680 | Val pKd: 2.2548 | LR: 0.000500
+Época [033/300] | Train pKd: 0.7327 | Train Phys: 0.2321 | Val pKd: 2.3016 | LR: 0.000500
+Época [034/300] | Train pKd: 0.6684 | Train Phys: 0.2263 | Val pKd: 2.2928 | LR: 0.000500
+Época [035/300] | Train pKd: 0.6337 | Train Phys: 0.2222 | Val pKd: 2.2602 | LR: 0.000500
+Época [036/300] | Train pKd: 0.6075 | Train Phys: 0.2209 | Val pKd: 2.2310 | LR: 0.000500
+Época [037/300] | Train pKd: 0.5801 | Train Phys: 0.2199 | Val pKd: 2.4250 | LR: 0.000500
+Época [038/300] | Train pKd: 0.5604 | Train Phys: 0.2182 | Val pKd: 2.3368 | LR: 0.000500
+Época [039/300] | Train pKd: 0.5234 | Train Phys: 0.2109 | Val pKd: 2.3131 | LR: 0.000500
+Época [040/300] | Train pKd: 0.5228 | Train Phys: 0.2092 | Val pKd: 2.3594 | LR: 0.000500
+Época [041/300] | Train pKd: 0.4914 | Train Phys: 0.2069 | Val pKd: 2.3389 | LR: 0.000500
+Época [042/300] | Train pKd: 0.4852 | Train Phys: 0.2081 | Val pKd: 2.3756 | LR: 0.000500
+Época [043/300] | Train pKd: 0.4554 | Train Phys: 0.2086 | Val pKd: 2.4503 | LR: 0.000250
+Época [044/300] | Train pKd: 0.3744 | Train Phys: 0.1963 | Val pKd: 2.3193 | LR: 0.000250
+Época [045/300] | Train pKd: 0.3419 | Train Phys: 0.1874 | Val pKd: 2.3679 | LR: 0.000250
+Época [046/300] | Train pKd: 0.3281 | Train Phys: 0.1898 | Val pKd: 2.3341 | LR: 0.000250
+Época [047/300] | Train pKd: 0.3217 | Train Phys: 0.1865 | Val pKd: 2.4192 | LR: 0.000250
+Época [048/300] | Train pKd: 0.3161 | Train Phys: 0.1919 | Val pKd: 2.3771 | LR: 0.000250
+Época [049/300] | Train pKd: 0.3039 | Train Phys: 0.1840 | Val pKd: 2.3994 | LR: 0.000250
+Época [050/300] | Train pKd: 0.3025 | Train Phys: 0.1850 | Val pKd: 2.3559 | LR: 0.000250
+Época [051/300] | Train pKd: 0.2979 | Train Phys: 0.1840 | Val pKd: 2.4028 | LR: 0.000250
+
+[!] Parada antecipada na época 51: 30 épocas sem melhora na validação.
+    Melhor modelo: época 21, Val pKd 2.0981
+
+Treinamento finalizado. Melhor Val pKd: 2.0981 (época 21) | RMSE de validação: 1.448
+
+============================================================
+ TESTE — CASF-2016 core set (285 complexos)
+============================================================
+  RMSE      : 1.486 unidades de pKd
+  MAE       : 1.185
+  Pearson R : 0.754   (R² = 0.568)
+  Baseline (prever a média): RMSE 2.170

@@ -1,98 +1,275 @@
-# PharmXAI-3D: Explainable SciML for Protein-Ligand Binding Affinity
+# PharmXAI-3D
 
-PharmXAI-3D is still a work in progress, but the aim is to be an advanced Scientific Machine Learning (SciML) pipeline engineered to predict absolute protein-ligand binding affinities ($pK_d$) directly from raw 3D crystallographic coordinates, utilizing SE(3)-invariant continuous filter convolutions and physics-targeted multi-task regularization.
+Geometric deep learning for protein–ligand binding affinity, with gradient-based
+structural interpretation. Work in progress.
 
-## 🚀 Core Utilities & Applications
-
-1. **High-Throughput Virtual Screening (HTVS):**
-   The goal is for the model to acts as a highly accurate oracle for ranking massive chemical libraries. Predicts absolute binding affinity ($pK_d$) in milliseconds, bypassing the inaccuracy and computational cost of classic docking algorithms (e.g., AutoDock Vina).
-
-2. **Lead Optimization (Ligand Pharmacophore Extraction):**
-   We aim to provide medicinal chemists with a visual Saliency Map of the ligand. It mathematically isolates the "untouchable" functional groups essential for binding (Magenta) versus the "modifiable scaffolds" (Cyan) where functional groups can be altered to improve ADMET profiles without destroying affinity.
-
-3. **Mechanistic Toxicity Analysis (Complex Mapping):**
-   Holistically maps the orthosteric binding pocket to identify critical protein-ligand interaction vectors (e.g., specific H-bonds or $\pi$-stacking). Enables rational drug design to purposefully avoid specific receptor residues known to cause off-target toxicity.
+The model reads raw 3D crystallographic coordinates of a protein pocket and a bound
+ligand and predicts binding affinity ($pK_d$). It is built on SE(3)-**invariant**
+continuous-filter convolutions (SchNet-style): the network sees only interatomic
+distances, so its output is unchanged by rotation or translation of the complex.
 
 ---
 
-## 🏗️ Architectural Phases
+## What the model actually does
 
-- **Phase 1 (Topological Ingestion):** Strict 6Å spatial radius pocket isolation to prevent memory bottlenecks. Computes a dense 11D physical prior vector (Atomic Number, Mass, Aromaticity, Formal Charge, Hybridization) avoiding hardcoded chemical rules.
-- **Phase 2 (Continuous SE(3) Convolutions):** Employs `ContinuousFilterConv` (SchNet-like topology). Euclidean distances are expanded into 32-bin Radial Basis Functions (RBF) for continuous spatial gradients.
-- **Phase 3 (Physics-Targeted Regularization):** Solves catastrophic overfitting via dual-vector regularization (Dropout, L2) and a Multi-Task Auxiliary Head that predicts a global Lennard-Jones steric potential proxy, forcing the latent manifold to physically understand spatial crowding.
-- **Phase 4 (Explainable AI / Saliency):** Computes the partial derivative $\frac{\partial (pK_d)}{\partial (Dist)}$. Extracts a continuous mathematical mapping of structural sensitivity projected into an interactive `3Dmol.js` Web Viewer.
+**It ranks compounds well. It measures absolute affinity poorly.** That distinction
+decides what the tool is good for, so it is stated up front.
+
+Evaluated on the CASF-2016 core set — 285 complexes never seen during training or
+model selection:
+
+| metric | value | reading |
+|---|---|---|
+| Spearman ρ | **0.746** | ranks compounds reliably |
+| Pearson R | **0.754** | R² = 0.568 |
+| RMSE | 1.486 $pK_d$ | typical error of ~31× in $K_d$ |
+| MAE | 1.185 $pK_d$ | |
+| slope of predicted vs. true | **0.424** | predictions compressed toward the mean |
+| baseline (predicting the mean) | 2.170 RMSE | |
+
+The slope of 0.424 is the number that characterises the model. An ideal predictor
+gives 1.0. At 0.424 it systematically under-predicts strong binders and
+over-predicts weak ones, spanning 2.83–10.67 where the truth spans 2.07–11.82.
+Together with an RMSE of 1.486 log units, this means a predicted $K_d$ can be off by
+a factor of tens. **Do not use it to report an absolute affinity.** Use it to order
+a library, which is what a Spearman ρ of 0.746 supports.
+
+### Position among published scoring functions
+
+The CASF-2016 package ships reference scores for 34 scoring functions on these same
+285 complexes. Recomputing Pearson R for all of them under identical conditions:
+
+| rank | method | R |
+|---|---|---|
+| 1 | deltaVinaRF20 | 0.816 |
+| **2** | **PharmXAI-3D (this work)** | **0.754** |
+| 3 | X-Score | 0.631 |
+| 4 | deltaSAS | 0.625 |
+| 7 | AutoDock Vina | 0.604 |
+| — | *median of the 34* | *0.537* |
+
+Second of 35, ahead of X-Score and AutoDock Vina. The scope of that claim matters:
+the 34 references are the classical scoring functions bundled with CASF-2016.
+Deep-learning methods published since reach R ≈ 0.70–0.85 on the same set, so this
+model now sits inside that band rather than below it — but at its lower end, and with
+far fewer parameters than the methods at the top.
 
 ---
 
-## ⚙️ Installation
+## Architecture
 
-1. Clone the repository:
+| | |
+|---|---|
+| trainable parameters | 127,090 |
+| message passing | 4 continuous-filter convolution layers, 64 channels |
+| distance encoding | 32 radial basis functions over 0–10 Å |
+| atom features | 13 per atom |
+| readout | per-role pooling: mean **and** sum, separately for ligand and pocket |
+| heads | $pK_d$ regression + steric auxiliary |
+
+**Graph construction.** The protein is truncated to a 6 Å shell around the ligand.
+Edges are covalent (within 2 Å, intramolecular) and interaction (within 5 Å, between
+ligand and pocket). Each atom's role — ligand or protein — is an explicit embedded
+feature; without it the network sees an undifferentiated cloud of atoms and cannot
+tell which part is the drug.
+
+**Atom features.** Atomic number, mass, degree, aromaticity, formal charge, H-bond
+donor, H-bond acceptor, and six hybridization one-hots.
+
+*A note on hydrogens.* PDBbind's structure files contain hydrogens, but they are not
+experimental: the headers read `GENERATED BY X-TOOL`, and N–H distances measure
+1.0400 Å with a standard deviation of 0.0003 Å — geometric placement, not
+measurement. They are therefore a deterministic function of the heavy atoms, carrying
+no independent information while inflating the graph by roughly half. They are
+removed, but what depends on them is kept: donor and acceptor flags are computed
+*while the hydrogens are still present* and survive their removal as atom properties.
+
+**Auxiliary physics head.** The network also predicts a Lennard-Jones steric proxy
+computed from geometry, at loss weight 0.1. The proxy uses σ = 3.5 Å over non-bonded
+edges only — bonded atoms do not interact through Lennard-Jones in a force field —
+averaged per edge and log-compressed to tame the repulsive tail. Its correlation with
+$pK_d$ is −0.09, which is the intent: an auxiliary target strongly correlated with the
+primary one would be a shortcut rather than a regulariser.
+
+---
+
+## Three modes of analysis
+
+### 1. Affinity prediction and virtual screening
+
+The primary product: ranking libraries, at milliseconds per complex.
+
+### 2. Per-complex saliency — `explain.py`
+
+Computes $|\partial (pK_d)/\partial(\text{distance})|$ for every edge by
+backpropagation and renders the top percentile in an interactive 3D viewer.
+
+**This is a sensitivity map of the model, not a pharmacophore.** It answers: for
+*this one complex*, which interatomic distances most influence *this model's*
+prediction. It is single-complex, model-relative, and not usable as a database search
+query — and a pharmacophore must be none of those things.
+
+Its legitimate uses are model auditing and hypothesis generation. If the map
+highlights a known catalytic hydrogen bond, that is evidence the network learned a
+real interaction; if it highlights a solvent-exposed tail, that is evidence of a
+learned shortcut. Both are worth knowing.
+
+### 3. Per-target consensus — `consenso_farmacoforo.py`
+
+Aggregates saliency across the **five chemically distinct ligands** that bind the same
+target, using the CASF-2016 cluster structure of 57 targets × 5 complexes. Interaction
+saliency is summed per pocket residue, normalised per complex, and ranked by how many
+of the five place each residue among their most salient.
+
+A residue ranking high for all five is a candidate recognition hot spot: the model's
+dependence on it survives a complete change of ligand chemistry. That consensus is the
+ingredient a single-complex map lacks.
+
+```
+$ python3 consenso_farmacoforo.py 10
+
+[*] Cluster 10: 4lzs, 3u5j, 4wiv, 4ogj, 3p5o
+    resíduos: 13.0 por complexo, 14 distintos ao todo, sobreposição 79%
+
+     resíduo |   consenso | saliência média
+--------------------------------------------
+  ILE146     | 5/5        |          0.2328  <--
+  PRO82      | 5/5        |          0.1709  <--
+  LEU92      | 5/5        |          0.1376  <--
+  ASN140     | 5/5        |          0.0940  <--
+  TRP81      | 4/5        |          0.0912
+```
+
+Two safeguards are built in. Crystallographic waters are excluded, because `HOH`
+numbering is assigned per structure and never corresponds between entries — they
+could only dilute the ranking. And the script reports **pocket overlap** across the
+five complexes, warning below 20%: consensus by residue number presupposes a shared
+numbering convention, and near-zero overlap means that presupposition has failed.
+Measured across seven clusters, 61–79% overlap yields 5/5 consensus while zero
+overlap yields at most 3/5.
+
+This is a **receptor-side** map — residues with numbers. A classical pharmacophore is
+a **ligand-side** object: functional groups with defined geometry, usable as a search
+query. They are complementary, not the same thing.
+
+---
+
+## Installation
+
 ```bash
 git clone https://github.com/lapsx/PharmXAI-3D.git
 cd PharmXAI-3D
-```
-
-2. Install dependencies:
-```bash
 pip install -r requirements.txt
 ```
 
-3. **Dataset Preparation:**
-   Download the [PDBbind Dataset](http://www.pdbbind.org.cn/) (General & Refined sets) and extract them into the `raw/` directory.
+**Data.** Download the [PDBbind](http://www.pdbbind.org.cn/) general set into `raw/`
+with the index files in `index/`. For the standard benchmark, extract
+`CASF-2016/power_screening/CoreSet.dat` from the CASF-2016 package and save it as
+`core_set.dat` in the project root.
 
 ---
 
-## 💻 Usage
+## Usage
 
-### 1. Training the Model
-Execute the data processing and training pipeline. The model will auto-checkpoint the best weights (`pharm_model_weights_best.pth`).
+### Training
+
 ```bash
-python3 data_processor.py
 python3 train.py
 ```
 
-### 2. Custom Inference & Virtual Screening (`predict_custom.py`)
-Run advanced inferences on arbitrary `.pdb` and `.sdf` files. The system automatically performs **Smina Docking** and **PINN Relaxation (Induced-Fit)** via `torch.autograd` to optimize spatial clashes before predicting the final affinity.
+Processing the full PDBbind set takes several hours on first run and is cached in
+`processed/`. The split is three-way and hermetic: the CASF core set is removed first
+as **test**, the remaining refined set is **validation**, everything else is
+**training** — 13,711 / 5,041 / 285 complexes. Since the checkpoint is selected on
+validation, only the test number is reportable, and the script evaluates it once at
+the end using the selected checkpoint.
 
-**Commands and Arguments (Tags):**
-- `-r` or `--receptor`: Path to the receptor `.pdb` structure (Required).
-- `-l` or `--ligand`: Path to the drug/ligand `.sdf` structure (Required).
-- `-n` or `--native`: Path to the native crystal ligand `.pdb`. Activates **Targeted Docking**, using the native ligand as a bounding box.
-- `-c` or `--compare`: Path to the native crystal ligand `.pdb`. Activates **Blind Docking** (Full scan) and compares the Center of Mass of the prediction with the true native structure, scientifically validating the docking pose.
-- `-t` or `--true-affinity`: Allows injecting a numerical value for the true experimental pKd (e.g., `-t 8.5`) to calculate and plot the absolute error margin.
-- `--no-minimize`: Disables PINN autograd physical relaxation (Not recommended).
-- `--no-explain`: Disables Saliency Map / HTML generation.
+Training stops after 30 epochs without improvement. In the reference run the best
+model appeared at epoch 17 and training halted at 47 of a possible 300.
 
-**Usage Examples:**
+### Inference on arbitrary structures
+
 ```bash
-# Targeted Docking (High-Throughput Screening)
+# Targeted docking against a known binding site
 python3 predict_custom.py -r target.pdb -l drug.sdf -n native_crystal.pdb
 
-# Blind Docking with True Affinity Scientific Validation
+# Blind docking, validating the predicted pose against the crystal structure
 python3 predict_custom.py -r target.pdb -l drug.sdf -c native_crystal.pdb -t 8.5
 ```
 
-**Web and PyMOL Integration:**
-For each inference, the script automatically generates **two spatial visualization files**:
-1. `pharmacophore_...html`: An interactive standalone 3D web viewer.
-2. `pharmacophore_...pml`: An executable **PyMOL** macro script. To open it professionally on your desktop, simply drag and drop the `.pml` file into the PyMOL window or run `pymol script.pml`. It will automatically load the complexes, coloring schemes, and Saliency Map pseudoatoms.
+| flag | meaning |
+|---|---|
+| `-r`, `--receptor` | receptor `.pdb` (required) |
+| `-l`, `--ligand` | ligand `.sdf` (required) |
+| `-n`, `--native` | native ligand `.pdb`; targeted docking via bounding box |
+| `-c`, `--compare` | native ligand `.pdb`; blind docking, compares centres of mass |
+| `-t`, `--true-affinity` | experimental $pK_d$, for plotting the error |
+| `--no-minimize` | skip the steric relaxation |
+| `--no-explain` | skip saliency and HTML generation |
 
-### 3. XAI Extraction (Command Line Interface)
-Extract continuous mathematical mappings of structural sensitivity projected into an interactive standalone `3Dmol.js` Web Viewer.
+**Pose relaxation.** Before prediction the ligand pose is relaxed by minimising a
+physical energy: Lennard-Jones over the contacts, a harmonic restraint on covalent
+bond lengths, and an anchor to the docked pose. Only ligand atoms move, the pocket is
+held fixed, and the network is not in the loop.
+
+This replaces an earlier formulation that moved atoms to *maximise the model's own
+predicted affinity*. That version had no physical energy term, deformed the protein
+along with the ligand, and — because the reported affinity was then measured on the
+optimised pose — inflated the result by construction.
+
+Each inference writes an interactive `pharmacophore_*.html` viewer and an executable
+`pharmacophore_*.pml` PyMOL macro.
+
+### Consensus analysis
 
 ```bash
-# Pure Ligand Pharmacophore Extraction (Default: Dopamine D3 Receptor - 3pbl)
-python3 explain.py
-
-# Inject a specific PDB ID dynamically (e.g., Serotonin 5-HT2B bound to Ergotamine)
-python3 explain.py 5tvn
-
-# Map the holistic complex (Receptor + Ligand) for a specific target
-python3 explain_complex.py 5tvn
+python3 consenso_farmacoforo.py 10          # by cluster id (1–57)
+python3 consenso_farmacoforo.py --pdb 3u5j  # by any PDB id in the core set
+python3 consenso_farmacoforo.py 10 --top 8  # residues considered salient per complex
 ```
 
-### 4. Build GPCR Mini-Library
-Download our automated validation set to test cross-reactivity across Dopamine, Adenosine, and Opioid receptors (Delta, Kappa, Mu) directly from RCSB and PubChem:
+Writes `consenso_cluster<N>.pml`, colouring unanimous residues magenta and partial
+consensus orange.
+
+### GPCR validation library
+
 ```bash
 python3 build_mini_library.py
 ```
+
+Downloads a cross-reactivity set spanning dopamine, adenosine and opioid receptors
+from RCSB and PubChem.
+
+---
+
+## Limitations
+
+**Absolute affinity is unreliable.** See the slope of 0.343 above. This is a ranker.
+
+**The model overfits early.** Best validation arrives at epoch 17 of a possible 300,
+after which training loss keeps falling while validation rises. This is the main open
+lever for improvement. Note that rotational data augmentation would achieve nothing
+here — the network is SE(3)-invariant, so its output does not change under rotation.
+Coordinate noise would be the meaningful perturbation.
+
+**Single seed.** All reported numbers come from one training run. Validation RMSE
+varied by about 2% between two runs differing only in random initialisation, so small
+differences should not be over-interpreted. Error bars would need 3–5 seeds.
+
+**Consensus needs consistent numbering.** The per-target analysis matches residues by
+number, which fails when entries use different conventions. The tool detects and warns
+about this but cannot repair it; structural superposition would be required.
+
+**Mean pooling.** The readout averages over atoms, making the prediction insensitive
+to complex size. That is a deliberate choice against a trivial "bigger is stronger"
+shortcut, but it remains a modelling assumption worth revisiting.
+
+---
+
+## Data and references
+
+- PDBbind v2020 general set — [pdbbind.org.cn](http://www.pdbbind.org.cn/)
+- CASF-2016 benchmark, including the reference scoring functions used above
+- SchNet: Schütt et al., *SchNet: A continuous-filter convolutional neural network for
+  modeling quantum interactions*, NIPS 2017
+- Docking via [smina](https://sourceforge.net/projects/smina/)

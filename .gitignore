@@ -27,3 +27,9 @@ venv/
 *.pth
 smina
 mini_library_gpcr/
+
+# Pacotes de dados baixados (CASF-2016 tem 1,5 GB)
+*.tar.gz
+
+# Saídas geradas de visualização (PyMOL), como já se faz com *.html
+*.pml

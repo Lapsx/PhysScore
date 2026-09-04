@@ -76,6 +76,89 @@ def compute_center_of_mass(mol_path):
     pos = mol.GetConformer().GetPositions()
     return np.mean(pos, axis=0)
 
+def relaxar_pose(data_homo, passos=100, lr=0.01, sigma=3.5,
+                 k_ligacao=10.0, k_restricao=1.0):
+    """Relaxamento estérico da pose por minimização de energia física.
+
+    Substitui a formulação anterior, que era:
+
+        loss = -pkd_pred.sum() + 0.5 * steric_pred.sum()
+
+    ou seja, movia os átomos para MAXIMIZAR a afinidade que o próprio modelo
+    previa. Isso não é física: é geração de exemplo adversarial contra a rede.
+    Nada no laço impedia geometrias absurdas, e a afinidade final era então medida
+    sobre a pose que havia sido otimizada para maximizá-la — o número reportado
+    era um limite superior do que o modelo diria, não uma predição.
+
+    Três agravantes na versão anterior, também corrigidos aqui: o tensor `pos` é o
+    mesclado, então a proteína inteira se deformava junto; o `model.train()`
+    deixava o Dropout ativo durante a otimização, tornando os gradientes ruidosos;
+    e o termo estérico usado era a cabeça auxiliar da rede, que — como o alvo dela
+    era constante — tinha gradiente praticamente nulo.
+
+    Aqui a energia é calculada diretamente das coordenadas, sem a rede no laço:
+
+        E = Σ_interação LJ(r)  +  k_lig·Σ_covalente (r − r₀)²  +  k_res·‖Δpos‖²
+
+    O primeiro termo resolve choques estéricos, o segundo preserva a geometria
+    covalente do ligante (sem ele a molécula se desmancha) e o terceiro ancora a
+    pose ao resultado do docking. Só os átomos do LIGANTE se movem.
+    """
+    print("[*] Relaxamento estérico da pose (minimização de energia, ligante móvel)...")
+
+    pos0 = data_homo.pos.detach().clone()
+    row, col = data_homo.edge_index
+    e_type = getattr(data_homo, 'edge_type', None)
+    n_type = getattr(data_homo, 'node_type', None)
+
+    if n_type is None:
+        print("[!] node_type ausente: relaxamento pulado (não há como fixar a proteína).")
+        return
+
+    movel = (n_type == 0).unsqueeze(-1).float()          # 0 = ligante
+    if movel.sum() == 0:
+        print("[!] Nenhum átomo de ligante identificado: relaxamento pulado.")
+        return
+
+    if e_type is not None:
+        m_inter = e_type >= 2
+        m_cov = e_type < 2
+    else:
+        d0 = torch.norm(pos0[row] - pos0[col], dim=1)
+        m_inter, m_cov = d0 > 2.0, d0 <= 2.0
+
+    r0_cov = torch.norm(pos0[row[m_cov]] - pos0[col[m_cov]], dim=1).detach()
+
+    delta = torch.zeros_like(pos0, requires_grad=True)
+    otim = torch.optim.Adam([delta], lr=lr)
+
+    for _ in range(passos):
+        otim.zero_grad()
+        pos = pos0 + delta * movel                        # proteína permanece fixa
+
+        r_int = torch.norm(pos[row[m_inter]] - pos[col[m_inter]], dim=1).clamp(min=1.5)
+        termo = (sigma / r_int) ** 6
+        e_lj = (termo ** 2 - 2 * termo).mean()
+
+        r_cov = torch.norm(pos[row[m_cov]] - pos[col[m_cov]], dim=1)
+        e_lig = ((r_cov - r0_cov) ** 2).mean()
+
+        e_res = ((delta * movel) ** 2).sum(dim=1).mean()
+
+        (e_lj + k_ligacao * e_lig + k_restricao * e_res).backward()
+        otim.step()
+
+    with torch.no_grad():
+        deslocamento = (delta * movel).norm(dim=1)
+        data_homo.pos = (pos0 + delta * movel).detach()
+        data_homo.edge_attr = torch.norm(
+            data_homo.pos[row] - data_homo.pos[col], p=2, dim=1).view(-1, 1).detach()
+
+    print(f"[+] Pose relaxada | deslocamento do ligante: "
+          f"médio {deslocamento[deslocamento > 0].mean():.3f} Å, "
+          f"máx {deslocamento.max():.3f} Å")
+
+
 def predict_affinity(receptor_path, ligand_path, native_path=None, compare_path=None, minimize=True, explain=True, true_affinity=None):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"🔥 Carregando PharmGeometricGNN na unidade: {device}")
@@ -110,26 +193,7 @@ def predict_affinity(receptor_path, ligand_path, native_path=None, compare_path=
     data_homo = hetero_data.to_homogeneous().to(device)
     
     if minimize:
-        print("[*] Aplicando Física PINN: Otimizando induced-fit e choques estéricos via autograd...")
-        data_homo.pos.requires_grad_(True)
-        optimizer_pinn = torch.optim.Adam([data_homo.pos], lr=0.01)
-        model.train()
-        for step in range(50):
-            optimizer_pinn.zero_grad()
-            pkd_pred, steric_pred = model(data_homo)
-            # Maximiza afinidade (minimiza -pKd) e minimiza repulsão estérica
-            loss = -pkd_pred.sum() + 0.5 * steric_pred.sum()
-            loss.backward()
-            optimizer_pinn.step()
-        
-        data_homo.pos.requires_grad_(False)
-        
-        # Sincronizar as distâncias (edge_attr) com as novas posições otimizadas
-        row, col = data_homo.edge_index
-        data_homo.edge_attr = torch.norm(data_homo.pos[row] - data_homo.pos[col], p=2, dim=1).view(-1, 1).detach()
-        
-        model.eval()
-        print("[+] Induced-fit resolvido pela rede neural!")
+        relaxar_pose(data_homo)
 
     if explain: data_homo.edge_attr.requires_grad_(True)
 
