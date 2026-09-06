@@ -5,6 +5,7 @@ import torch.nn as nn
 from torch_geometric.loader import DataLoader
 import os
 import re
+import random
 
 from dataset import PDBbindDataset
 from gnn_model import PharmGeometricGNN
@@ -132,10 +133,30 @@ def train():
     ckpt = os.environ.get("PHARM_CKPT", "pharm_model_weights_best.pth")
     print(f"Checkpoint de saída: {ckpt}")
 
+    # Semente fixa para tornar as comparacoes entre configuracoes pareadas: a
+    # mesma semente da a mesma inicializacao e a mesma ordem de lotes, entao a
+    # diferenca entre duas rodadas e a configuracao, nao o sorteio.
+    seed = int(os.environ.get("PHARM_SEED", "0"))
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    print(f"Semente: {seed}")
+
     # Como tratar os 51,3% de IC50 do conjunto de treino, ausentes da validação
     # e do teste. "keep": comportamento historico, todos misturados sem
     # distincao. "drop": descarta o IC50, treino cai para ~6.700 complexos.
     # "token": mantem tudo e informa o tipo de ensaio ao modelo.
+    # Restringe o treino a uma lista de pdb_ids (JSON). Usado para o teste de
+    # homologia: remover do treino toda proteina parecida com alguma do CASF core
+    # responde se o R medido reflete prever um ligante novo num alvo NOVO, ou
+    # apenas num alvo ja visto com outro ligante.
+    ids_treino = None
+    if os.environ.get("PHARM_TREINO_IDS"):
+        import json as _json
+        ids_treino = set(_json.load(open(os.environ["PHARM_TREINO_IDS"])))
+        print(f"Treino restrito a {len(ids_treino)} ids de {os.environ['PHARM_TREINO_IDS']}")
+
     modo_ic50 = os.environ.get("PHARM_IC50", "keep").lower()
     assert modo_ic50 in ("keep", "drop", "token"), f"PHARM_IC50 invalido: {modo_ic50}"
     print(f"Tratamento do IC50: {modo_ic50}")
@@ -174,6 +195,8 @@ def train():
             val_dataset.append(graph)
         elif modo_ic50 == "drop" and t == "IC50":
             continue   # descartado do treino; nunca entra em val/teste de todo modo
+        elif ids_treino is not None and graph.pdb_id not in ids_treino:
+            continue   # fora da lista restrita
         else:
             train_dataset.append(graph)
 
