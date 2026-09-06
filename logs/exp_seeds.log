@@ -1,0 +1,19 @@
+=== seed 1 / completo — inicio 16:20 ===
+RESULTADO seed=1 cfg=completo R=0.736 RMSE=1.482
+=== seed 1 / controle — inicio 16:29 ===
+RESULTADO seed=1 cfg=controle R=0.726 RMSE=1.547
+=== seed 1 / sem_homologos — inicio 16:34 ===
+RESULTADO seed=1 cfg=sem_homologos R=0.676 RMSE=1.623
+=== seed 2 / completo — inicio 16:40 ===
+RESULTADO seed=2 cfg=completo R=0.768 RMSE=1.418
+=== seed 2 / controle — inicio 16:48 ===
+RESULTADO seed=2 cfg=controle R=0.749 RMSE=1.513
+=== seed 2 / sem_homologos — inicio 16:54 ===
+RESULTADO seed=2 cfg=sem_homologos R=0.700 RMSE=1.610
+=== seed 3 / completo — inicio 17:00 ===
+RESULTADO seed=3 cfg=completo R=0.755 RMSE=1.490
+=== seed 3 / controle — inicio 17:08 ===
+RESULTADO seed=3 cfg=controle R=0.759 RMSE=1.490
+=== seed 3 / sem_homologos — inicio 17:15 ===
+RESULTADO seed=3 cfg=sem_homologos R=0.699 RMSE=1.568
+=== TODAS AS SEEDS CONCLUIDAS 17:22 ===
