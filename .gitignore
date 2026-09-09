@@ -31,5 +31,25 @@ mini_library_gpcr/
 # Pacotes de dados baixados (CASF-2016 tem 1,5 GB)
 *.tar.gz
 
+# CASF-2016 extraído: 562 MB só com decoys_docking + power_docking + coreset.
+# É dado de benchmark de terceiros, reconstituível com o tar.gz — ver a seção 6
+# do EXPERIMENTOS.md para o comando exato de extração seletiva.
+CASF-2016/
+
+# Cache do InMemoryDataset (549 MB). Os .pt já caem na regra acima, mas o
+# diretório fica explícito porque é reconstruído sozinho a partir de raw/.
+processed/
+
+# Scores por pose do docking power: ~1,4 MB cada, intermediários e regenerados
+# em ~2 min por `docking_power.py --saida`. Os .log de cada rodada, esses sim,
+# ficam versionados — o EXPERIMENTOS.md remete a eles.
+logs/*.csv
+
+# Poses relaxadas que o predict_custom.py escreve ao lado do ligante de entrada
+*_minimized.sdf
+
+# Notebooks
+.ipynb_checkpoints/
+
 # Saídas geradas de visualização (PyMOL), como já se faz com *.html
 *.pml
