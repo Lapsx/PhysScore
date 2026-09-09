@@ -1,12 +1,37 @@
-# PharmXAI-3D
+# PhysScore
 
-Geometric deep learning for protein–ligand binding affinity, with gradient-based
-structural interpretation. Work in progress.
+**A graph neural network scoring function for protein–ligand binding affinity, with
+physical constraints in the loss.** Work in progress.
 
-The model reads raw 3D crystallographic coordinates of a protein pocket and a bound
-ligand and predicts binding affinity ($pK_d$). It is built on SE(3)-**invariant**
+Given the 3D coordinates of a protein pocket and a ligand posed inside it, the network
+predicts binding affinity ($pK_d$) in milliseconds. It is built on SE(3)-**invariant**
 continuous-filter convolutions (SchNet-style): the network sees only interatomic
 distances, so its output is unchanged by rotation or translation of the complex.
+
+It reaches **Pearson R = 0.754** on the CASF-2016 core set with **127k parameters** —
+second among the 35 scoring functions benchmarked below, and one to two orders of
+magnitude smaller than the deep-learning methods in the same accuracy band.
+
+---
+
+## Scope
+
+Read this before anything else — the project started as a pharmacophore-explainability
+experiment (hence the old `PharmXAI` name) and became a scoring function along the way.
+
+**What it is.** A scoring function. You give it a pocket and a posed ligand; it
+returns an affinity estimate. Its use is **ordering a library** — deciding which of
+a thousand candidates to test first.
+
+**What it is not.**
+
+- **Not a docking program.** It does not search for poses, and it is weak at
+  recognising a correct one (30th of 35 — see below). It needs smina, Vina, or Glide
+  to place the ligand first. It is a **re-scorer**.
+- **Not an absolute affinity predictor.** A predicted $K_d$ can be off by a factor of
+  tens. Rank compounds with it; do not report a number from it.
+- **Not a pharmacophore tool.** The gradient maps it produces are
+  model-audit instruments, not database search queries. See *Model interpretation*.
 
 ---
 
@@ -42,7 +67,7 @@ The CASF-2016 package ships reference scores for 34 scoring functions on these s
 | rank | method | R |
 |---|---|---|
 | 1 | deltaVinaRF20 | 0.816 |
-| **2** | **PharmXAI-3D (this work)** | **0.754** |
+| **2** | **PhysScore (this work)** | **0.754** |
 | 3 | X-Score | 0.631 |
 | 4 | deltaSAS | 0.625 |
 | 7 | AutoDock Vina | 0.604 |
@@ -53,6 +78,35 @@ the 34 references are the classical scoring functions bundled with CASF-2016.
 Deep-learning methods published since reach R ≈ 0.70–0.85 on the same set, so this
 model now sits inside that band rather than below it — but at its lower end, and with
 far fewer parameters than the methods at the top.
+
+### It does not find poses — it scores poses it is given
+
+CASF-2016 grades a scoring function on four separate powers, and the numbers above are
+only the first. On **docking power** — given a site and ~79 candidate poses of the same
+ligand, put the correct one on top — the same model ranks **30th of 35**:
+
+| | top1 % |
+|---|---|
+| AutodockVina | 90.1 |
+| *median of the 34 references* | *64.9* |
+| **PhysScore (this work)** | **47.0** |
+| contact-count baseline | 30.9 |
+| chance | 25.2 |
+
+**2nd of 35 at scoring, 30th of 35 at docking.** No reference function has a profile
+that lopsided, and the cause is not mysterious: every PDBbind complex is a correct
+pose, so nothing in training ever asked the network to place a minimum at the native
+geometry.
+
+The deficit is specific. Split by scale, PhysScore *beats* AutodockVina on global trend
+(rho 0.374 vs 0.334) and loses 2.5× within 3 Å of the native pose (0.249 vs 0.614). All
+43 points of top1 come from that neighbourhood: the model separates a plausible pose
+from an absurd one, and cannot choose between two plausible ones.
+
+So this is a **re-scorer**. It needs a docking program to find the pose — which is
+exactly its role in `predict_custom.py`, where smina docks and the network scores
+afterwards. `EXPERIMENTOS.md` §4 has the full measurement and the three measurement
+traps found along the way.
 
 ---
 
@@ -84,81 +138,82 @@ no independent information while inflating the graph by roughly half. They are
 removed, but what depends on them is kept: donor and acceptor flags are computed
 *while the hydrogens are still present* and survive their removal as atom properties.
 
-**Auxiliary physics head.** The network also predicts a Lennard-Jones steric proxy
-computed from geometry, at loss weight 0.1. The proxy uses σ = 3.5 Å over non-bonded
-edges only — bonded atoms do not interact through Lennard-Jones in a force field —
-averaged per edge and log-compressed to tame the repulsive tail. Its correlation with
-$pK_d$ is −0.09, which is the intent: an auxiliary target strongly correlated with the
-primary one would be a shortcut rather than a regulariser.
+---
+
+## Where the physics is
+
+The network is not a black box fitted to labels alone. Four places where physical
+structure is imposed rather than learned:
+
+**Symmetry, in the architecture.** The convolutions are SE(3)-invariant: the model
+consumes interatomic *distances*, never coordinates. Rotating or translating a complex
+cannot change its prediction, because the rotated complex is literally the same input.
+This is a hard constraint, not a learned approximation — and a consequence worth
+knowing is that rotational data augmentation would achieve nothing here.
+
+**A Lennard-Jones auxiliary target, in the loss.** A second head predicts a steric
+proxy computed from geometry, at loss weight 0.1: σ = 3.5 Å over non-bonded edges only
+(bonded atoms do not interact through Lennard-Jones in a force field), averaged per
+edge and log-compressed to tame the repulsive tail. Its correlation with $pK_d$ is
+−0.09, which is the intent — an auxiliary target strongly correlated with the primary
+one would be a shortcut rather than a regulariser.
+
+**Chemistry that survives preprocessing.** Donor and acceptor flags are computed while
+hydrogens are still present and kept after their removal; ionisation state is assigned
+at pH ~7 (see *Architecture* above). The information is distilled, not discarded.
+
+**Energy minimisation at inference.** Before prediction the ligand pose is relaxed
+against a physical energy — Lennard-Jones over contacts, a harmonic restraint on bond
+lengths, an anchor to the docked pose. Only ligand atoms move, the pocket is held
+fixed, and **the network is not in the loop**. An earlier version moved atoms to
+maximise the model's own predicted affinity, and since the reported affinity was then
+measured on the optimised pose, it inflated the result by construction.
+
+**In progress: a stationarity constraint.** If the score is to behave like an energy,
+the net force and torque on the ligand must vanish at the crystallographic pose. That
+is a variational residual — the closest well-posed analogue here to a PINN's PDE
+residual, since no PDE has $pK_d$ as its solution ($pK_d$ is a *free* energy, with
+entropy and desolvation inside). It is imposed on the 6 rigid-body degrees of freedom
+and paired with a ranking term against perturbed poses, because stationarity alone is
+degenerate: a constant function satisfies it perfectly. This targets the docking-power
+gap above and trains a **separate** head, leaving the affinity head untouched.
 
 ---
 
-## Three modes of analysis
+## Model interpretation
 
-### 1. Affinity prediction and virtual screening
+Secondary to the scoring function, and deliberately modest in what it claims.
 
-The primary product: ranking libraries, at milliseconds per complex.
-
-### 2. Per-complex saliency — `explain.py`
-
-Computes $|\partial (pK_d)/\partial(\text{distance})|$ for every edge by
+`explain.py` computes $|\partial (pK_d)/\partial(\text{distance})|$ for every edge by
 backpropagation and renders the top percentile in an interactive 3D viewer.
+`consenso_farmacoforo.py` aggregates that signal across the five chemically distinct
+ligands binding one target, using the CASF-2016 cluster structure, and reports which
+pocket residues rank high for all five.
 
-**This is a sensitivity map of the model, not a pharmacophore.** It answers: for
-*this one complex*, which interatomic distances most influence *this model's*
-prediction. It is single-complex, model-relative, and not usable as a database search
-query — and a pharmacophore must be none of those things.
+**These are sensitivity maps of the model, not pharmacophores.** They answer which
+interatomic distances most influence *this model's* prediction — model-relative, and
+not usable as a database search query. A classical pharmacophore is a ligand-side
+object with defined geometry; these are receptor-side residue rankings. They are not
+the same thing, and the project no longer claims otherwise.
 
-Its legitimate uses are model auditing and hypothesis generation. If the map
-highlights a known catalytic hydrogen bond, that is evidence the network learned a
-real interaction; if it highlights a solvent-exposed tail, that is evidence of a
-learned shortcut. Both are worth knowing.
+Their legitimate use is **auditing**. If a map highlights a known catalytic hydrogen
+bond, that is evidence the network learned a real interaction; if it highlights a
+solvent-exposed tail, that is evidence of a learned shortcut. Both are worth knowing,
+and the second is why the tool exists.
 
-### 3. Per-target consensus — `consenso_farmacoforo.py`
-
-Aggregates saliency across the **five chemically distinct ligands** that bind the same
-target, using the CASF-2016 cluster structure of 57 targets × 5 complexes. Interaction
-saliency is summed per pocket residue, normalised per complex, and ranked by how many
-of the five place each residue among their most salient.
-
-A residue ranking high for all five is a candidate recognition hot spot: the model's
-dependence on it survives a complete change of ligand chemistry. That consensus is the
-ingredient a single-complex map lacks.
-
-```
-$ python3 consenso_farmacoforo.py 10
-
-[*] Cluster 10: 4lzs, 3u5j, 4wiv, 4ogj, 3p5o
-    resíduos: 13.0 por complexo, 14 distintos ao todo, sobreposição 79%
-
-     resíduo |   consenso | saliência média
---------------------------------------------
-  ILE146     | 5/5        |          0.2328  <--
-  PRO82      | 5/5        |          0.1709  <--
-  LEU92      | 5/5        |          0.1376  <--
-  ASN140     | 5/5        |          0.0940  <--
-  TRP81      | 4/5        |          0.0912
-```
-
-Two safeguards are built in. Crystallographic waters are excluded, because `HOH`
-numbering is assigned per structure and never corresponds between entries — they
-could only dilute the ranking. And the script reports **pocket overlap** across the
-five complexes, warning below 20%: consensus by residue number presupposes a shared
-numbering convention, and near-zero overlap means that presupposition has failed.
-Measured across seven clusters, 61–79% overlap yields 5/5 consensus while zero
-overlap yields at most 3/5.
-
-This is a **receptor-side** map — residues with numbers. A classical pharmacophore is
-a **ligand-side** object: functional groups with defined geometry, usable as a search
-query. They are complementary, not the same thing.
+Two safeguards are built in: crystallographic waters are excluded (`HOH` numbering is
+per-structure and never corresponds between entries), and pocket overlap across the
+five complexes is reported, with a warning below 20% — consensus by residue number
+presupposes a shared numbering convention, and near-zero overlap means that
+presupposition has failed.
 
 ---
 
 ## Installation
 
 ```bash
-git clone https://github.com/lapsx/PharmXAI-3D.git
-cd PharmXAI-3D
+git clone https://github.com/Lapsx/GNN_physics_ScoringFunction.git
+cd GNN_physics_ScoringFunction
 pip install -r requirements.txt
 ```
 
@@ -244,7 +299,24 @@ from RCSB and PubChem.
 
 ## Limitations
 
-**Absolute affinity is unreliable.** See the slope of 0.343 above. This is a ranker.
+**Absolute affinity is unreliable.** See the slope of 0.424 above. This is a ranker.
+
+**Weak docking power.** 30th of 35 at picking the correct pose (see above). Use a
+docking program to place the ligand; this model only scores what it is given.
+
+**No target in the benchmark is new to the model.** Measured by 4-mer containment,
+every one of the 285 CASF-2016 core complexes shares sequence with some training
+protein: minimum 0.803, median 0.996, 62% above 0.99. A stratified "no close homolog"
+test is impossible on this split, and that impossibility *is* the finding. It applies
+to every method trained on PDBbind, so comparisons against the 34 classical functions
+— which never saw these data — favour ML methods unfairly; comparisons between ML
+methods remain fair.
+
+Removing the 2,812 training complexes homologous to the core set, against a
+same-size random control over three paired seeds, costs **0.053 ± 0.006** in R
+(p = 0.004). **The honest pair of numbers is R = 0.753 on a known target and
+R = 0.692 on a new one** — the latter still above the count baseline (0.592) and the
+median classical function (0.537).
 
 **The model overfits early.** Best validation arrives at epoch 17 of a possible 300,
 after which training loss keeps falling while validation rises. This is the main open
@@ -252,17 +324,20 @@ lever for improvement. Note that rotational data augmentation would achieve noth
 here — the network is SE(3)-invariant, so its output does not change under rotation.
 Coordinate noise would be the meaningful perturbation.
 
-**Single seed.** All reported numbers come from one training run. Validation RMSE
-varied by about 2% between two runs differing only in random initialisation, so small
-differences should not be over-interpreted. Error bars would need 3–5 seeds.
+**Seed variance.** The headline numbers come from the reference run; across three
+seeds the model gives R = 0.753 ± 0.016 and RMSE = 1.463 ± 0.040, so the reference
+checkpoint sits inside the spread. Differences below ~0.03 in R are not
+interpretable without paired multi-seed runs.
 
 **Consensus needs consistent numbering.** The per-target analysis matches residues by
 number, which fails when entries use different conventions. The tool detects and warns
 about this but cannot repair it; structural superposition would be required.
 
-**Mean pooling.** The readout averages over atoms, making the prediction insensitive
-to complex size. That is a deliberate choice against a trivial "bigger is stronger"
-shortcut, but it remains a modelling assumption worth revisiting.
+**Contact count is available to the head.** The per-role readout hands
+`log(n_contacts)` straight to the MLP, which is what fixed the earlier size-blind
+mean pooling — but it also makes counting the most tempting shortcut available to the
+network. Every new evaluation on this model is run alongside a trivial count baseline
+for that reason.
 
 ---
 
@@ -273,3 +348,7 @@ shortcut, but it remains a modelling assumption worth revisiting.
 - SchNet: Schütt et al., *SchNet: A continuous-filter convolutional neural network for
   modeling quantum interactions*, NIPS 2017
 - Docking via [smina](https://sourceforge.net/projects/smina/)
+
+`EXPERIMENTOS.md` (Portuguese) is the bench record: how every number here was
+obtained, what was tested and rejected, and what each result does and does not
+license one to claim.
