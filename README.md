@@ -217,32 +217,23 @@ cd GNN_physics_ScoringFunction
 pip install -r requirements.txt
 ```
 
-**Data.** Download the [PDBbind](http://www.pdbbind.org.cn/) general set into `raw/`
-with the index files in `index/`. For the standard benchmark, extract
-`CASF-2016/power_screening/CoreSet.dat` from the CASF-2016 package and save it as
-`core_set.dat` in the project root.
+**That is all you need to score a complex.** The trained weights
+(`pharm_model_weights_best.pth`, 0.5 MB) ship with the repository — the checkpoint
+that produces every number reported here. No dataset download is required to use the
+model.
+
+**Data, only if you want to retrain or reproduce.** Download the
+[PDBbind](http://www.pdbbind.org.cn/) general set into `raw/` with the index files in
+`index/`. For the benchmark, extract `CASF-2016/power_screening/CoreSet.dat` from the
+CASF-2016 package and save it as `core_set.dat` in the project root.
 
 ---
 
 ## Usage
 
-### Training
+### Scoring a complex
 
-```bash
-python3 train.py
-```
-
-Processing the full PDBbind set takes several hours on first run and is cached in
-`processed/`. The split is three-way and hermetic: the CASF core set is removed first
-as **test**, the remaining refined set is **validation**, everything else is
-**training** — 13,711 / 5,041 / 285 complexes. Since the checkpoint is selected on
-validation, only the test number is reportable, and the script evaluates it once at
-the end using the selected checkpoint.
-
-Training stops after 30 epochs without improvement. In the reference run the best
-model appeared at epoch 17 and training halted at 47 of a possible 300.
-
-### Inference on arbitrary structures
+The common case. Uses the shipped checkpoint; no training needed.
 
 ```bash
 # Targeted docking against a known binding site
@@ -274,6 +265,27 @@ optimised pose — inflated the result by construction.
 
 Each inference writes an interactive `pharmacophore_*.html` viewer and an executable
 `pharmacophore_*.pml` PyMOL macro.
+
+### Retraining (optional)
+
+Only needed to reproduce the numbers, to change the architecture, or to train on
+another dataset. Requires the PDBbind download above. Note that a model retrained on
+different data is a different model: the results reported here describe this
+checkpoint on CASF-2016, and would have to be re-measured.
+
+```bash
+python3 train.py
+```
+
+Processing the full PDBbind set takes several hours on first run and is cached in
+`processed/`. The split is three-way and hermetic: the CASF core set is removed first
+as **test**, the remaining refined set is **validation**, everything else is
+**training** — 13,711 / 5,041 / 285 complexes. Since the checkpoint is selected on
+validation, only the test number is reportable, and the script evaluates it once at
+the end using the selected checkpoint.
+
+Training stops after 30 epochs without improvement. In the reference run the best
+model appeared at epoch 17 and training halted at 47 of a possible 300.
 
 ### Consensus analysis
 
