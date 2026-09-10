@@ -1,0 +1,8 @@
+
+                  rho global  rho <=3 A (fino)      AUC
+--------------------------------------------------------
+PharmXAI-3D            0.374             0.249    0.690
+AutodockVina           0.334             0.614    0.791
+X-Score                0.601             0.609    0.856
+--------------------------------------------------------
+AUC = P(pose near-native pontuar acima de pose ruim); poses pareadas

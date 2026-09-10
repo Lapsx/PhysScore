@@ -1,0 +1,61 @@
+Checkpoint de saída: exp_direcional_fisica.pth
+Semente: 0
+Tratamento do IC50: keep
+🔥 Treinando em: cuda
+Carregando o Banco de Dados...
+Separando Treino (General), Validação (Refined) e Teste (CASF core)...
+Total: 19037 | Treino: 13711 | Validação: 5041 | Teste (CASF): 285
+[*] Modelo com 293,043 parâmetros · camadas DIRECIONAIS (distância + ângulo)
+[*] Física de pose ATIVA — ranking (peso 1.0, margem 0.5/Å de RMSD, perturbação 0,3–3,0 Å) + estacionariedade (peso 0.1, a partir da época 6).
+Iniciando o treinamento por até 300 épocas (parada antecipada após 30 sem melhora)...
+Época [001/300] | Train pKd: 3.5921 | Train Phys: 1.4630 | Rank: 0.0504 | Estac: 0.00656 | Val pKd: 3.2798 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 3.2798)
+Época [002/300] | Train pKd: 2.8541 | Train Phys: 1.5097 | Rank: 0.0025 | Estac: 0.01143 | Val pKd: 3.4650 | LR: 0.001000
+Época [003/300] | Train pKd: 2.5957 | Train Phys: 1.0567 | Rank: 0.0013 | Estac: 0.02164 | Val pKd: 2.7774 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.7774)
+Época [004/300] | Train pKd: 2.7006 | Train Phys: 1.1325 | Rank: 0.0030 | Estac: 0.02302 | Val pKd: 2.7448 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.7448)
+Época [005/300] | Train pKd: 2.3181 | Train Phys: 0.7849 | Rank: 0.0008 | Estac: 0.03329 | Val pKd: 2.5310 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.5310)
+Época [006/300] | Train pKd: 2.2519 | Train Phys: 0.6357 | Rank: 0.0007 | Estac: 0.00943 | Val pKd: 2.3172 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.3172)
+Época [007/300] | Train pKd: 2.1531 | Train Phys: 0.5714 | Rank: 0.0013 | Estac: 0.00757 | Val pKd: 2.3313 | LR: 0.001000
+Época [008/300] | Train pKd: 2.0038 | Train Phys: 0.5085 | Rank: 0.0010 | Estac: 0.00661 | Val pKd: 2.3714 | LR: 0.001000
+Época [009/300] | Train pKd: 2.2425 | Train Phys: 0.5295 | Rank: 0.0012 | Estac: 0.00630 | Val pKd: 2.5934 | LR: 0.001000
+Época [010/300] | Train pKd: 2.0139 | Train Phys: 0.4322 | Rank: 0.0015 | Estac: 0.00710 | Val pKd: 2.3690 | LR: 0.001000
+Época [011/300] | Train pKd: 1.8502 | Train Phys: 0.3662 | Rank: nan | Estac: 0.00716 | descartados: 1 | Val pKd: 2.3595 | LR: 0.001000
+Época [012/300] | Train pKd: 1.8537 | Train Phys: 0.4428 | Rank: nan | Estac: 0.00839 | descartados: 1 | Val pKd: 2.2904 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.2904)
+Época [013/300] | Train pKd: 2.0921 | Train Phys: 0.5737 | Rank: nan | Estac: 1962675.86367 | descartados: 1 | Val pKd: 3.2722 | LR: 0.001000
+Época [014/300] | Train pKd: 2.0913 | Train Phys: 0.8797 | Rank: nan | Estac: 0.01007 | descartados: 1 | Val pKd: 2.0991 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.0991)
+Época [015/300] | Train pKd: 1.4217 | Train Phys: 0.3472 | Rank: nan | Estac: 0.00782 | descartados: 66 | Val pKd: 2.0525 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.0525)
+Época [016/300] | Train pKd: 0.0000 | Train Phys: 0.0000 | Rank: nan | Estac: 37620.78268 | descartados: 429 | Val pKd: 2.0525 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.0525)
+Época [017/300] | Train pKd: 0.0035 | Train Phys: 0.0003 | Rank: nan | Estac: 122105.29208 | descartados: 428 | Val pKd: 2.0448 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.0448)
+Época [018/300] | Train pKd: 0.0000 | Train Phys: 0.0000 | Rank: nan | Estac: 1.01695 | descartados: 429 | Val pKd: 2.0448 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.0448)
+Época [019/300] | Train pKd: 0.0000 | Train Phys: 0.0000 | Rank: nan | Estac: 677245.55960 | descartados: 429 | Val pKd: 2.0448 | LR: 0.001000
+Época [020/300] | Train pKd: 0.0000 | Train Phys: 0.0000 | Rank: nan | Estac: 3657.80594 | descartados: 429 | Val pKd: 2.0448 | LR: 0.001000
+Época [021/300] | Train pKd: 0.0000 | Train Phys: 0.0000 | Rank: nan | Estac: 3075.31156 | descartados: 429 | Val pKd: 2.0448 | LR: 0.001000
+Época [022/300] | Train pKd: 0.0000 | Train Phys: 0.0000 | Rank: nan | Estac: 69124970.03138 | descartados: 429 | Val pKd: 2.0448 | LR: 0.001000
+Traceback (most recent call last):
+  File "/home/lucas/Documents/PINN/PharmXAI-3D/train.py", line 587, in <module>
+    train()
+  File "/home/lucas/Documents/PINN/PharmXAI-3D/train.py", line 449, in train
+    _, _, pose_pert = model(data_homo, assay=assay, retornar_pose=True)
+  File "/home/lucas/anaconda3/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/lucas/anaconda3/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/lucas/Documents/PINN/PharmXAI-3D/gnn_model.py", line 346, in forward
+    x, v = layer(x, v, edge_index, rbf_attr, versor)
+  File "/home/lucas/anaconda3/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1751, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+  File "/home/lucas/anaconda3/lib/python3.10/site-packages/torch/nn/modules/module.py", line 1762, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "/home/lucas/Documents/PINN/PharmXAI-3D/gnn_model.py", line 107, in forward
+    msg_v = v[j] * f_vv.unsqueeze(1) + versor.unsqueeze(-1) * f_vs.unsqueeze(1)
+torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 28.00 MiB. GPU 0 has a total capacity of 5.67 GiB of which 26.19 MiB is free. Including non-PyTorch memory, this process has 5.62 GiB memory in use. Of the allocated memory 4.11 GiB is allocated by PyTorch, and 1.40 GiB is reserved by PyTorch but unallocated. If reserved but unallocated memory is large try setting PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True to avoid fragmentation.  See documentation for Memory Management  (https://pytorch.org/docs/stable/notes/cuda.html#environment-variables)

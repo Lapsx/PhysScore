@@ -1,0 +1,28 @@
+[*] 285 complexos · bolso 'nativa' · 14 processos
+[*] pesos: exp_direcional_fisica_s2.pth · score pela cabeça de pose
+    25/285  (0 falhas)
+    50/285  (0 falhas)
+    75/285  (0 falhas)
+    100/285  (0 falhas)
+    125/285  (0 falhas)
+    150/285  (0 falhas)
+    175/285  (0 falhas)
+    200/285  (0 falhas)
+    225/285  (0 falhas)
+    250/285  (0 falhas)
+    275/285  (0 falhas)
+    285/285  (0 falhas)
+
+[+] 285 complexos, 22482 poses (79 por complexo)
+
+Docking power — CASF-2016, near-native = RMSD <= 2.0 Å, bolso 'nativa', cabeça 'pose'
+
+score            top1 %   top2 %   top3 %   rho medio   RMSD top1
+-----------------------------------------------------------------
+modelo (pose)      78.9     89.1     95.1       0.533        1.43
+n_contatos         30.9     47.0     57.5       0.591        3.29
+LJ (proxy)         29.1     41.8     53.7       0.124        4.69
+-----------------------------------------------------------------
+acaso (top1)       25.2     — fração de poses near-native no conjunto
+
+[+] scores por pose em logs/dock_exp_direcional_fisica_s2.csv

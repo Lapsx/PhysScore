@@ -1,0 +1,17 @@
+Checkpoint de saída: exp_pose_fisica.pth
+Semente: 0
+Tratamento do IC50: keep
+🔥 Treinando em: cuda
+Carregando o Banco de Dados...
+Separando Treino (General), Validação (Refined) e Teste (CASF core)...
+Total: 19037 | Treino: 13711 | Validação: 5041 | Teste (CASF): 285
+[*] Física de pose ATIVA — ranking (peso 1.0, margem 1.0) + estacionariedade (peso 0.1, a partir da época 6). Custo medido: 2,2x por lote.
+Iniciando o treinamento por até 300 épocas (parada antecipada após 30 sem melhora)...
+Época [001/300] | Train pKd: 3.6580 | Train Phys: 1.4854 | Rank: 0.0418 | Estac: 0.01160 | Val pKd: 3.1854 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 3.1854)
+Época [002/300] | Train pKd: 2.7242 | Train Phys: 1.2845 | Rank: 0.0006 | Estac: 0.04077 | Val pKd: 3.1845 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 3.1845)
+Época [003/300] | Train pKd: 2.5638 | Train Phys: 1.0148 | Rank: 0.0008 | Estac: 0.08341 | Val pKd: 2.9486 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.9486)
+Época [004/300] | Train pKd: 2.4202 | Train Phys: 0.5898 | Rank: 0.0003 | Estac: 0.05096 | Val pKd: 2.5750 | LR: 0.001000
+  -> Novo melhor modelo salvo! (Val pKd: 2.5750)

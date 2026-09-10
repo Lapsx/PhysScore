@@ -8,9 +8,10 @@ predicts binding affinity ($pK_d$) in milliseconds. It is built on SE(3)-**invar
 continuous-filter convolutions (SchNet-style): the network sees only interatomic
 distances, so its output is unchanged by rotation or translation of the complex.
 
-It reaches **Pearson R = 0.754** on the CASF-2016 core set with **127k parameters** —
-second among the 35 scoring functions benchmarked below, and one to two orders of
-magnitude smaller than the deep-learning methods in the same accuracy band.
+It ships in two sizes. **`lite`** is a single 144k-parameter network: R = 0.752 on
+CASF-2016 and 78.5% top1 docking power. **`full`** averages six checkpoints for
+R = 0.819 and 83.9% top1 — 8th of 35 on pose selection, and above the best classical
+scoring function on affinity — at six times the inference cost.
 
 ---
 
@@ -25,9 +26,11 @@ a thousand candidates to test first.
 
 **What it is not.**
 
-- **Not a docking program.** It does not search for poses, and it is weak at
-  recognising a correct one (30th of 35 — see below). It needs smina, Vina, or Glide
-  to place the ligand first. It is a **re-scorer**.
+- **Not a docking program.** It does not *search* for poses — it scores poses handed
+  to it. It has become good at *recognising* a correct one (8th of 35, see below),
+  which it was not before the physics constraints were added, but it still needs
+  smina, Vina, or Glide to generate candidates. It is a **re-scorer**, now a
+  competent one.
 - **Not an absolute affinity predictor.** A predicted $K_d$ can be off by a factor of
   tens. Rank compounds with it; do not report a number from it.
 - **Not a pharmacophore tool.** The gradient maps it produces are
@@ -43,21 +46,33 @@ decides what the tool is good for, so it is stated up front.
 Evaluated on the CASF-2016 core set — 285 complexes never seen during training or
 model selection:
 
-| metric | value | reading |
+| metric | `lite` (1 model) | `full` (6 models) |
 |---|---|---|
-| Spearman ρ | **0.746** | ranks compounds reliably |
-| Pearson R | **0.754** | R² = 0.568 |
-| RMSE | 1.486 $pK_d$ | typical error of ~31× in $K_d$ |
-| MAE | 1.185 $pK_d$ | |
-| slope of predicted vs. true | **0.424** | predictions compressed toward the mean |
+| Pearson R | 0.752 ± 0.013 | **0.819** |
+| RMSE ($pK_d$) | 1.470 ± 0.042 | **1.357** |
+| MAE | 1.207 | 1.105 |
+| slope of predicted vs. true | 0.458 ± 0.044 | 0.473 |
+| **top1 docking power** | 78.5% ± 1.7 | **83.9%** |
+| top3 docking power | 93.2% | 95.1% |
+| RMSD of selected pose | 1.46 Å | **1.10 Å** |
+| parameters | **144k** | 1.3M |
 | baseline (predicting the mean) | 2.170 RMSE | |
 
-The slope of 0.424 is the number that characterises the model. An ideal predictor
-gives 1.0. At 0.424 it systematically under-predicts strong binders and
-over-predicts weak ones, spanning 2.83–10.67 where the truth spans 2.07–11.82.
-Together with an RMSE of 1.486 log units, this means a predicted $K_d$ can be off by
-a factor of tens. **Do not use it to report an absolute affinity.** Use it to order
-a library, which is what a Spearman ρ of 0.746 supports.
+`lite` figures are mean ± sd over three seeds. Docking power is the fraction of the
+285 targets where the top-scored pose, out of ~79 candidates, is within 2 Å of the
+crystal pose.
+
+**The slope is the number that characterises the model, and it is the one that has not
+moved.** An ideal predictor gives 1.0; at ~0.46 this one systematically under-predicts
+strong binders and over-predicts weak ones. With an RMSE of ~1.4 log units, a predicted
+$K_d$ can be off by a factor of tens. **Do not use it to report an absolute affinity.**
+
+That is not a fixable calibration error, and it is worth being precise about why.
+Under a squared-error loss the optimal prediction is the conditional mean, which is
+*less* variable than the truth — compression is what a good imperfect predictor does.
+Since the slope of predicted-vs-true equals R·σ̂/σ, no linear rescaling can push it past
+**R**, and forcing it to 1.0 makes RMSE worse. Improving the slope means improving R.
+There is no post-hoc shortcut.
 
 ### Position among published scoring functions
 
@@ -66,47 +81,82 @@ The CASF-2016 package ships reference scores for 34 scoring functions on these s
 
 | rank | method | R |
 |---|---|---|
+| **—** | **PhysScore `full`** (6-model ensemble) | **0.819** |
 | 1 | deltaVinaRF20 | 0.816 |
-| **2** | **PhysScore (this work)** | **0.754** |
+| **2** | **PhysScore `lite`** (single, 144k params) | **0.752** |
 | 3 | X-Score | 0.631 |
 | 4 | deltaSAS | 0.625 |
 | 7 | AutoDock Vina | 0.604 |
 | — | *median of the 34* | *0.537* |
 
-Second of 35, ahead of X-Score and AutoDock Vina. The scope of that claim matters:
-the 34 references are the classical scoring functions bundled with CASF-2016.
-Deep-learning methods published since reach R ≈ 0.70–0.85 on the same set, so this
-model now sits inside that band rather than below it — but at its lower end, and with
-far fewer parameters than the methods at the top.
+`lite` is second of 35 as a single 144k-parameter model. `full` edges past
+deltaVinaRF20, but it is an **ensemble** and every reference is a single model, so that
+row is marked `—` rather than 1st: it is not a like-for-like comparison and should not
+be reported as one.
 
-### It does not find poses — it scores poses it is given
+The scope of the whole table matters too. The 34 references are the *classical* scoring
+functions bundled with CASF-2016. Deep-learning methods published since reach
+R ≈ 0.70–0.85 on the same set, so this model sits inside that band — with one to two
+orders of magnitude fewer parameters than the methods at its top.
 
-CASF-2016 grades a scoring function on four separate powers, and the numbers above are
-only the first. On **docking power** — given a site and ~79 candidate poses of the same
-ligand, put the correct one on top — the same model ranks **30th of 35**:
+### Pose selection, and how the physics got it there
 
-| | top1 % |
-|---|---|
-| AutodockVina | 90.1 |
-| *median of the 34 references* | *64.9* |
-| **PhysScore (this work)** | **47.0** |
-| contact-count baseline | 30.9 |
-| chance | 25.2 |
+CASF-2016 grades a scoring function on four separate powers, and affinity is only the
+first. **Docking power** asks a different question: given a site and ~79 candidate poses
+of the same ligand, does the top-scored one match the crystal structure?
 
-**2nd of 35 at scoring, 30th of 35 at docking.** No reference function has a profile
-that lopsided, and the cause is not mysterious: every PDBbind complex is a correct
-pose, so nothing in training ever asked the network to place a minimum at the native
-geometry.
+The first measurement was bad. The original model — trained only to predict affinity —
+placed **30th of 35**, at 47.0% top1, barely above the contact-count baseline. The cause
+was not subtle: every PDBbind complex is a *correct* pose, so nothing in training ever
+asked the network to put a minimum at the native geometry.
 
-The deficit is specific. Split by scale, PhysScore *beats* AutodockVina on global trend
-(rho 0.374 vs 0.334) and loses 2.5× within 3 Å of the native pose (0.249 vs 0.614). All
-43 points of top1 come from that neighbourhood: the model separates a plausible pose
-from an absurd one, and cannot choose between two plausible ones.
+Two physical constraints fixed it, both on a **separate head** so the affinity output
+was never touched:
 
-So this is a **re-scorer**. It needs a docking program to find the pose — which is
-exactly its role in `predict_custom.py`, where smina docks and the network scores
-afterwards. `EXPERIMENTOS.md` §4 has the full measurement and the three measurement
-traps found along the way.
+- **Stationarity** — at the crystallographic pose, the net force and torque on the
+  ligand must vanish. This is the variational condition an energy satisfies at a
+  minimum, imposed on the 6 rigid-body degrees of freedom.
+- **Ranking** against rigidly perturbed poses, with the graph edges held fixed so that
+  contact count is *identical* between native and perturbed — closing the counting
+  shortcut before it exists.
+
+Neither works alone: stationarity by itself is degenerate, since a constant function
+satisfies it perfectly.
+
+| | top1 % | |
+|---|---|---|
+| AutodockVina | 90.1 | 1st |
+| deltaVinaRF20 | 89.1 | 2nd |
+| ChemPLP@GOLD | 85.6 | 6th |
+| **PhysScore `full`** | **83.9** | **8th** |
+| GlideScore-XP | 83.5 | 9th |
+| **PhysScore `lite`** | **78.5** | **14th** |
+| *median of the 34 references* | *64.9* | |
+| contact-count baseline | 30.9 | |
+| chance | 25.2 | |
+
+**From 30th to 8th, with the affinity R unchanged** (0.754 → 0.752, within seed noise).
+Three controls back this up: the *affinity* head of the same checkpoint scores 40.4%,
+so the gain is not diffuse; the contact-count baseline stays at 30.9%, so it is not a
+size shortcut; and removing the crystal pose from the candidate set leaves 75.8%, so the
+model is judging docked geometry rather than recognising the crystal.
+
+It still does not *search* for poses. In `predict_custom.py`, smina generates candidates
+and the network scores them — which is what a re-scorer does. `EXPERIMENTOS.md` §4 and
+§5 have the full measurements and the three measurement traps found along the way.
+
+### Where the ensemble helps, and what it costs
+
+Averaging six checkpoints — three scalar, three with directional features — gives the
+`full` numbers above. The mechanism is error decorrelation, and it is worth stating a
+tension openly: **the directional features were tested on their own and rejected**
+(§6 — no sustained gain in R, slope, or top1 across three paired seeds, at 2.3× the
+parameters). They earn their place here only because they fail *differently* from the
+scalar models, which is exactly what an ensemble needs. An ensemble of three scalar
+seeds reaches R = 0.789; adding the three directional ones takes it to 0.819.
+
+Note also that `full` is an ensemble while all 34 reference functions are single
+models, so the affinity comparison flatters it.
 
 ---
 
@@ -114,12 +164,12 @@ traps found along the way.
 
 | | |
 |---|---|
-| trainable parameters | 127,090 |
+| trainable parameters | 143,795 (`lite`) · 1.3M (`full`, 6 models) |
 | message passing | 4 continuous-filter convolution layers, 64 channels |
 | distance encoding | 32 radial basis functions over 0–10 Å |
 | atom features | 13 per atom |
 | readout | per-role pooling: mean **and** sum, separately for ligand and pocket |
-| heads | $pK_d$ regression + steric auxiliary |
+| heads | $pK_d$ regression + steric auxiliary + pose quality |
 
 **Graph construction.** The protein is truncated to a 6 Å shell around the ligand.
 Edges are covalent (within 2 Å, intramolecular) and interaction (within 5 Å, between
@@ -169,14 +219,20 @@ fixed, and **the network is not in the loop**. An earlier version moved atoms to
 maximise the model's own predicted affinity, and since the reported affinity was then
 measured on the optimised pose, it inflated the result by construction.
 
-**In progress: a stationarity constraint.** If the score is to behave like an energy,
-the net force and torque on the ligand must vanish at the crystallographic pose. That
-is a variational residual — the closest well-posed analogue here to a PINN's PDE
-residual, since no PDE has $pK_d$ as its solution ($pK_d$ is a *free* energy, with
-entropy and desolvation inside). It is imposed on the 6 rigid-body degrees of freedom
-and paired with a ranking term against perturbed poses, because stationarity alone is
-degenerate: a constant function satisfies it perfectly. This targets the docking-power
-gap above and trains a **separate** head, leaving the affinity head untouched.
+**A stationarity constraint, in the loss.** If the score is to behave like an energy,
+the net force and torque on the ligand must vanish at the crystallographic pose. That is
+a variational residual — the closest well-posed analogue here to a PINN's PDE residual,
+since no PDE has $pK_d$ as its solution ($pK_d$ is a *free* energy, with entropy and
+desolvation inside). It is imposed on the 6 rigid-body degrees of freedom, not the 3N
+Cartesian ones: the crystal pose is not the minimum of the ligand's *internal* geometry
+according to the model, and demanding that would inject noise.
+
+It is paired with a ranking term against rigidly perturbed poses, and the pairing is
+load-bearing rather than decorative: **stationarity alone is degenerate**, because a
+constant function zeroes force and torque perfectly. Measured at initialisation, the
+pose head starts almost constant (|F| = 1e-4). Ranking gives the minimum its content;
+stationarity gives it its shape. This is what took docking power from 30th to 8th of 35
+(§5), and it lives on a separate head so the affinity output was never constrained.
 
 ---
 
@@ -217,10 +273,9 @@ cd GNN_physics_ScoringFunction
 pip install -r requirements.txt
 ```
 
-**That is all you need to score a complex.** The trained weights
-(`pharm_model_weights_best.pth`, 0.5 MB) ship with the repository — the checkpoint
-that produces every number reported here. No dataset download is required to use the
-model.
+**That is all you need to score a complex.** The trained weights ship with the
+repository — 0.57 MB for `lite`, 5.1 MB for all six `full` checkpoints. Every number
+reported here comes from them. No dataset download is required to use the model.
 
 **Data, only if you want to retrain or reproduce.** Download the
 [PDBbind](http://www.pdbbind.org.cn/) general set into `raw/` with the index files in
@@ -233,7 +288,17 @@ CASF-2016 package and save it as `core_set.dat` in the project root.
 
 ### Scoring a complex
 
-The common case. Uses the shipped checkpoint; no training needed.
+The common case. Uses the shipped checkpoints; no training needed.
+
+**Which one to use.** `lite` is one 144k-parameter network and one forward pass —
+use it for screening large libraries, where throughput decides. `full` averages six
+checkpoints for +0.067 in R and +5.4 points of top1 docking power, at six times the
+cost — use it when you are scoring tens or hundreds of compounds and accuracy decides.
+
+| | R | top1 docking | params | inference |
+|---|---|---|---|---|
+| `lite` | 0.752 ± 0.013 | 78.5% ± 1.7 | 144k | 1× |
+| `full` | 0.819 | 83.9% | 1.3M | 6× |
 
 ```bash
 # Targeted docking against a known binding site
@@ -311,10 +376,11 @@ from RCSB and PubChem.
 
 ## Limitations
 
-**Absolute affinity is unreliable.** See the slope of 0.424 above. This is a ranker.
+**Absolute affinity is unreliable.** See the slope of ~0.46 above. This is a ranker.
 
-**Weak docking power.** 30th of 35 at picking the correct pose (see above). Use a
-docking program to place the ligand; this model only scores what it is given.
+**It does not generate poses.** Docking power is now 8th of 35 (`full`) at *picking*
+the correct pose from candidates, but the candidates have to come from somewhere. Use
+smina, Vina, or Glide to place the ligand; this model scores what it is given.
 
 **No target in the benchmark is new to the model.** Measured by 4-mer containment,
 every one of the 285 CASF-2016 core complexes shares sequence with some training
@@ -328,18 +394,30 @@ Removing the 2,812 training complexes homologous to the core set, against a
 same-size random control over three paired seeds, costs **0.053 ± 0.006** in R
 (p = 0.004). **The honest pair of numbers is R = 0.753 on a known target and
 R = 0.692 on a new one** — the latter still above the count baseline (0.592) and the
-median classical function (0.537).
+median classical function (0.537). Both were measured on the pre-physics scalar model;
+the homology penalty has not been re-measured for `lite` or `full`.
 
-**The model overfits early.** Best validation arrives at epoch 17 of a possible 300,
-after which training loss keeps falling while validation rises. This is the main open
-lever for improvement. Note that rotational data augmentation would achieve nothing
-here — the network is SE(3)-invariant, so its output does not change under rotation.
-Coordinate noise would be the meaningful perturbation.
+**The model overfits early.** Best validation arrives around epoch 17–19 of a possible
+300, after which training loss keeps falling while validation rises. Note that rotational
+data augmentation would achieve nothing here — the network is SE(3)-invariant, so its
+output does not change under rotation. Coordinate noise would be the meaningful
+perturbation.
 
-**Seed variance.** The headline numbers come from the reference run; across three
-seeds the model gives R = 0.753 ± 0.016 and RMSE = 1.463 ± 0.040, so the reference
-checkpoint sits inside the spread. Differences below ~0.03 in R are not
-interpretable without paired multi-seed runs.
+**The slope has not moved.** 0.458 ± 0.044, essentially where it started. Adding
+directional (angular) features was the obvious attack and it failed: no sustained gain
+in R, slope, or top1 across three paired seeds, at 2.3× the parameters (§6). The model
+*uses* the angular information intensively — ablating it shifts predictions by 2.14
+$pK_d$ — it just does not convert into accuracy. This is the most serious open problem.
+
+**Ensemble numbers are not like-for-like.** `full` averages six models; all 34 CASF
+references are single models. Compare `lite` against them, not `full`.
+
+**Seed variance.** `lite` figures are mean ± sd over three seeds (R = 0.752 ± 0.013).
+Differences below ~0.03 in R are not interpretable without **paired** multi-seed runs —
+the same seed for both configurations, so the difference is the configuration and not
+the draw. This is not pedantry: the directional-features result looked like a +0.014
+gain in a single run and turned out to be null (+0.018, p = 0.324, sign flipping across
+seeds) once paired.
 
 **Consensus needs consistent numbering.** The per-target analysis matches residues by
 number, which fails when entries use different conventions. The tool detects and warns

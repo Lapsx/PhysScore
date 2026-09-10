@@ -77,6 +77,117 @@ def carrega_tipo_ensaio(filepath="index/INDEX_general_PL.2020R1.lst"):
 TIPOS_NAO_LIGADOS = 2
 
 
+# ----------------------------------------------------------------------------
+# Física de pose (seção 4 do EXPERIMENTOS.md)
+# ----------------------------------------------------------------------------
+
+def _centroides_ligante(pos, mascara_lig, batch, num_graphs):
+    """Centroide do ligante de cada grafo, e o índice de grafo de cada átomo dele."""
+    b = batch[mascara_lig]
+    p = pos[mascara_lig]
+    contagem = torch.zeros(num_graphs, 1, device=pos.device).index_add_(
+        0, b, torch.ones(b.shape[0], 1, device=pos.device))
+    centro = torch.zeros(num_graphs, 3, device=pos.device).index_add_(0, b, p)
+    return centro / contagem.clamp(min=1.0), b, p, contagem
+
+
+def perturbar_ligante(pos, node_type, batch, num_graphs,
+                      desloc_min=0.3, desloc_max=3.0, ang_max=0.35):
+    """Move o ligante como corpo rígido: rotação em torno do próprio centroide mais
+    translação. O bolso fica parado, como num docking real. Devolve as posições
+    novas e o RMSD efetivo de cada grafo.
+
+    As ARESTAS não são refeitas, só as distâncias. É deliberado, e não uma
+    aproximação por preguiça: manter a topologia fixa deixa `n_contatos` idêntico
+    entre a pose nativa e a perturbada, o que fecha o atalho de contagem antes que
+    ele exista. O readout entrega `log1p(n_contatos)` direto ao MLP, e sem esse
+    cuidado a cabeça de pose aprenderia a contar contatos em vez de ler geometria —
+    o mesmo erro que a seção 1 encontrou no readout e que a seção 4 encontrou de
+    novo no parse da pose cristalográfica.
+
+    **A magnitude é sorteada por grafo, não fixa.** Com deslocamento fixo de 1,5 Å,
+    a loss de ranking caiu de 0,042 para 0,0003 em quatro épocas: separar a nativa
+    de uma perturbação sempre do mesmo tamanho é fácil, e uma vez resolvida ela para
+    de dar gradiente — restando só a estacionariedade, que sozinha puxa de volta
+    para a constante. Sorteando entre 0,3 e 3,0 Å a tarefa cobre a faixa onde o
+    déficit real está (rho 0,249 abaixo de 3 Å, contra 0,614 do AutodockVina), e as
+    perturbações pequenas continuam difíceis depois que as grandes ficaram fáceis.
+
+    O ângulo escala junto com o deslocamento para que uma perturbação "pequena" seja
+    pequena nos dois graus de liberdade ao mesmo tempo.
+    """
+    lig = (node_type == 0)
+    if lig.sum() == 0:
+        return pos, torch.zeros(num_graphs, device=pos.device)
+    centro, b, p, _ = _centroides_ligante(pos, lig, batch, num_graphs)
+
+    escala = torch.rand(num_graphs, 1, device=pos.device)          # [0,1) por grafo
+    desloc = desloc_min + escala * (desloc_max - desloc_min)
+
+    eixo = torch.randn(num_graphs, 3, device=pos.device)
+    eixo = eixo / eixo.norm(dim=1, keepdim=True).clamp(min=1e-8)
+    sinal = torch.where(torch.rand(num_graphs, 1, device=pos.device) < 0.5, -1.0, 1.0)
+    ang = sinal * escala * ang_max
+
+    u, th = eixo[b], ang[b]
+    v = p - centro[b]
+    cos, sin = torch.cos(th), torch.sin(th)
+    # Rodrigues
+    v_rot = (v * cos
+             + torch.cross(u, v, dim=1) * sin
+             + u * (u * v).sum(dim=1, keepdim=True) * (1 - cos))
+
+    t = torch.randn(num_graphs, 3, device=pos.device)
+    t = t / t.norm(dim=1, keepdim=True).clamp(min=1e-8) * desloc
+
+    saida = pos.clone()
+    saida[lig] = centro[b] + v_rot + t[b]
+
+    # RMSD efetivo por grafo — a rotação contribui além da translação, então ele não
+    # é igual a `desloc` e precisa ser medido.
+    d2 = (saida[lig] - p).pow(2).sum(dim=1)
+    contagem = torch.zeros(num_graphs, device=pos.device).index_add_(
+        0, b, torch.ones_like(d2))
+    soma = torch.zeros(num_graphs, device=pos.device).index_add_(0, b, d2)
+    rmsd = (soma / contagem.clamp(min=1.0)).sqrt()
+
+    return saida, rmsd
+
+
+def distancias_de(pos, edge_index):
+    return torch.norm(pos[edge_index[0]] - pos[edge_index[1]], p=2, dim=1).view(-1, 1)
+
+
+def forca_e_torque(score, pos, node_type, batch, num_graphs):
+    """Força e torque resultantes sobre o ligante, por grafo.
+
+    Se o score vai se comportar como energia, ambos se anulam na pose
+    cristalográfica — é a condição de equilíbrio, e o análogo aqui do resíduo de
+    EDP de um PINN. Não existe EDP cuja solução seja pKd (é energia livre, com
+    entropia e dessolvatação dentro), mas existe esta condição variacional, e ela
+    é exatamente o que falta: o déficit medido está na vizinhança do mínimo.
+
+    São impostos os 6 graus de liberdade de CORPO RÍGIDO, não os 3N cartesianos.
+    A pose cristalográfica não é o mínimo da geometria interna do ligante segundo o
+    modelo, e exigir isso injetaria ruído em vez de sinal.
+
+    Medido antes de qualquer treino, no 1a30: |F| = 1,52 e |T| = 2,01.
+    """
+    grad = torch.autograd.grad(score.sum(), pos, create_graph=True)[0]
+    lig = (node_type == 0)
+    centro, b, p, contagem = _centroides_ligante(pos, lig, batch, num_graphs)
+    g = grad[lig]
+
+    forca = torch.zeros(num_graphs, 3, device=pos.device).index_add_(0, b, g)
+    r = p - centro[b]
+    torque = torch.zeros(num_graphs, 3, device=pos.device).index_add_(
+        0, b, torch.cross(r, g, dim=1))
+
+    # Normalizadas por número de átomos: sem isso um ligante grande contribuiria
+    # mais para a loss por ser grande, não por estar mais longe do equilíbrio.
+    return forca / contagem.clamp(min=1.0), torque / contagem.clamp(min=1.0)
+
+
 def calculate_lj_potential(edge_attr, edge_index, batch, num_graphs,
                            edge_type=None, sigma=3.5):
     """Proxy de potencial estérico de Lennard-Jones, por grafo.
@@ -218,8 +329,36 @@ def train():
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False) if test_dataset else None
 
     # Inicializar o Modelo (Dropout ativo = 0.2 default)
+    # Física de pose: desligada por padrão, para que `python train.py` continue
+    # reproduzindo exatamente a linha de referência de R = 0,754.
+    usar_pose = os.environ.get("PHARM_POSE", "0") not in ("0", "", "off", "no")
+    # Camadas com features vetoriais equivariantes (ver CamadaDirecional em
+    # gnn_model.py). Desligado por padrão: muda o state_dict por completo, e os
+    # checkpoints existentes são de camadas escalares.
+    usar_direcional = os.environ.get("PHARM_DIRECIONAL", "0") not in ("0", "", "off", "no")
+    lambda_rank = float(os.environ.get("PHARM_LAMBDA_RANK", "1.0"))
+    lambda_esta = float(os.environ.get("PHARM_LAMBDA_ESTA", "0.1"))
+    margem_rank = float(os.environ.get("PHARM_MARGEM", "0.5"))  # por Å de RMSD
+    # Épocas antes de ligar a estacionariedade. Medido na inicialização: a cabeça de
+    # pose nasce praticamente constante (|F| = 1e-4), e uma constante satisfaz a
+    # estacionariedade PERFEITAMENTE sem ter aprendido nada. Ligada desde a época 1
+    # ela competiria com o ranking justamente enquanto este tenta tirar a cabeça da
+    # constante. O ranking dá conteúdo ao mínimo; a estacionariedade depois lhe dá
+    # forma. Ordem inversa arrisca travar na solução trivial.
+    esta_warmup = int(os.environ.get("PHARM_ESTA_WARMUP", "5"))
+
     model = PharmGeometricGNN(node_dim=64, num_gaussians=32, num_layers=4,
-                              usar_assay=(modo_ic50 == "token")).to(device)
+                              usar_assay=(modo_ic50 == "token"),
+                              usar_pose=usar_pose,
+                              usar_direcional=usar_direcional).to(device)
+    n_par = sum(p.numel() for p in model.parameters())
+    print(f"[*] Modelo com {n_par:,} parâmetros"
+          + (" · camadas DIRECIONAIS (distância + ângulo)" if usar_direcional
+             else " · camadas escalares (só distância)"))
+    if usar_pose:
+        print(f"[*] Física de pose ATIVA — ranking (peso {lambda_rank}, margem "
+              f"{margem_rank}/Å de RMSD, perturbação 0,3–3,0 Å) + estacionariedade "
+              f"(peso {lambda_esta}, a partir da época {esta_warmup + 1}).")
     
     # Regularização L2: weight_decay penaliza pesos gigantes
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-4)
@@ -253,31 +392,131 @@ def train():
         model.train()
         total_loss_pkd = 0
         total_loss_physics = 0
+        total_loss_rank = 0
+        total_loss_esta = 0
+        lotes_descartados = 0
         
         for data in train_loader:
             data_homo = data.to_homogeneous().to(device)
             target_pkd = data.y.to(device)
-            
+            assay = data.assay.to(device)
+
             # Gerar target de física dinamicamente
             target_steric = calculate_lj_potential(
                 data_homo.edge_attr, data_homo.edge_index, data_homo.batch,
                 data.num_graphs, edge_type=data_homo.edge_type
             )
-            
+
             optimizer.zero_grad()
-            out_pkd, out_steric = model(data_homo, assay=data.assay.to(device))
-            
-            loss_pkd = criterion(out_pkd, target_pkd)
-            loss_physics = criterion(out_steric, target_steric)
-            
-            # Loss Multi-Tarefa
-            loss = loss_pkd + lambda_physics * loss_physics
-            
+
+            if not usar_pose:
+                out_pkd, out_steric = model(data_homo, assay=assay)
+                loss_pkd = criterion(out_pkd, target_pkd)
+                loss_physics = criterion(out_steric, target_steric)
+                loss = loss_pkd + lambda_physics * loss_physics
+            else:
+                # `pos` precisa de gradiente para a estacionariedade. O forward já
+                # recomputa `edge_attr` a partir de `pos` quando isso acontece.
+                pos_nativa = data_homo.pos.detach().clone().requires_grad_(True)
+                data_homo.pos = pos_nativa
+
+                out_pkd, out_steric, out_pose = model(
+                    data_homo, assay=assay, retornar_pose=True)
+                loss_pkd = criterion(out_pkd, target_pkd)
+                loss_physics = criterion(out_steric, target_steric)
+
+                # (a) Estacionariedade: na pose cristalográfica, força e torque
+                #     resultantes sobre o ligante devem se anular.
+                forca, torque = forca_e_torque(
+                    out_pose, pos_nativa, data_homo.node_type,
+                    data_homo.batch, data.num_graphs)
+                loss_esta = (forca.pow(2).sum(dim=1) + torque.pow(2).sum(dim=1)).mean()
+
+                # (b) Ranking contra uma perturbação rígida. Sem ele a
+                #     estacionariedade é DEGENERADA: uma cabeça constante zera
+                #     força e torque perfeitamente sem ter aprendido nada. O
+                #     ranking é o que dá conteúdo ao mínimo; a estacionariedade é o
+                #     que lhe dá forma.
+                with torch.no_grad():
+                    pos_pert, rmsd_pert = perturbar_ligante(
+                        pos_nativa.detach(), data_homo.node_type,
+                        data_homo.batch, data.num_graphs)
+                    attr_pert = distancias_de(pos_pert, data_homo.edge_index)
+
+                attr_original = data_homo.edge_attr
+                data_homo.pos = pos_pert          # sem requires_grad: não há
+                data_homo.edge_attr = attr_pert   # estacionariedade a impor aqui
+                _, _, pose_pert = model(data_homo, assay=assay, retornar_pose=True)
+                data_homo.edge_attr = attr_original
+
+                # Margem PROPORCIONAL ao afastamento: uma perturbação de 0,3 Å
+                # exige pouca diferença de score, uma de 3 Å exige muita. Com
+                # margem fixa a cabeça só precisa aprender o SINAL da diferença,
+                # e satura; proporcional, ela precisa aprender o quanto o score
+                # decai com a distância — que é a estrutura fina que falta.
+                margem = margem_rank * rmsd_pert.view(-1, 1)
+                loss_rank = torch.relu(
+                    margem - (out_pose - pose_pert)).mean()
+
+                peso_esta = lambda_esta if epoch >= esta_warmup else 0.0
+                loss = (loss_pkd + lambda_physics * loss_physics
+                        + lambda_rank * loss_rank + peso_esta * loss_esta)
+
+            if not torch.isfinite(loss):
+                # Um lote patológico não deve contaminar os pesos. Descartar é
+                # melhor que propagar: o NaN é absorvente, e uma vez nos pesos
+                # todas as épocas seguintes viram NaN.
+                lotes_descartados += 1
+                optimizer.zero_grad()
+                continue
+
             loss.backward()
+
+            # Recorte de norma do gradiente — só no caminho direcional.
+            #
+            # Com double backward sobre features vetoriais a distribuição de norma
+            # do gradiente tem cauda pesada, e um único lote basta para levar os
+            # pesos a uma região de onde não voltam: treino saudável até a época 20
+            # (Estac ~0,007), explosão na 21 (Estac 813, pKd 523), NaN na 22.
+            #
+            # O limite de 500 vem de medição, não de convenção. As normas em treino
+            # saudável, sobre 20 lotes:
+            #
+            #     escalar + física     mediana 53,6 · p95 105,7 · máx 149,0
+            #     direcional + física  mediana 54,1 · p95 227,0 · máx 325,3
+            #
+            # Um limite "seguro" de 10, que é o default folclórico, cortaria 100%
+            # dos lotes e mudaria o treino por completo — inclusive o escalar, cujo
+            # resultado já está reportado. 500 fica acima de todo o regime normal e
+            # só corta a explosão.
+            #
+            # Restrito a `usar_direcional` de propósito: o caminho escalar chegou ao
+            # R = 0,750 e aos 79,3% de top1 sem recorte nenhum, e mudá-lo agora
+            # tornaria aqueles números irreprodutíveis.
+            # A norma é sempre calculada, mesmo sem recorte, porque é ela que
+            # denuncia um gradiente podre. `clip_grad_norm_` devolve a norma ANTES
+            # do recorte, então serve às duas coisas.
+            norma = torch.nn.utils.clip_grad_norm_(
+                model.parameters(), max_norm=(500.0 if usar_direcional else float('inf')))
+
+            # Checar a LOSS não basta, e a rodada anterior mostrou por quê: uma loss
+            # finita pode ter gradiente NaN — `sqrt(0)` é o caso clássico, valor
+            # finito e derivada infinita. Um único lote assim injeta NaN nos pesos,
+            # e a partir daí TODA loss vira NaN: nas épocas 11 a 19 caía 1 lote por
+            # época, e na 20 todos os 429 caíram de uma vez, com a validação
+            # congelada. O descarte passa a proteger um modelo já morto.
+            if not torch.isfinite(norma):
+                lotes_descartados += 1
+                optimizer.zero_grad()
+                continue
+
             optimizer.step()
             
             total_loss_pkd += loss_pkd.item() * data.num_graphs
             total_loss_physics += loss_physics.item() * data.num_graphs
+            if usar_pose:
+                total_loss_rank += loss_rank.item() * data.num_graphs
+                total_loss_esta += loss_esta.item() * data.num_graphs
             
         avg_train_loss_pkd = total_loss_pkd / len(train_dataset)
         avg_train_loss_phys = total_loss_physics / len(train_dataset)
@@ -299,7 +538,16 @@ def train():
         scheduler.step(avg_val_loss_pkd)
         
         current_lr = optimizer.param_groups[0]['lr']
-        print(f"Época [{epoch+1:03d}/{epochs:03d}] | Train pKd: {avg_train_loss_pkd:.4f} | Train Phys: {avg_train_loss_phys:.4f} | Val pKd: {avg_val_loss_pkd:.4f} | LR: {current_lr:.6f}")
+        extra = ""
+        if usar_pose:
+            # |F| e |T| caindo ao longo das épocas é a métrica de progresso da
+            # estacionariedade: mede o quanto a pose cristalográfica virou um
+            # equilíbrio para a cabeça de pose.
+            extra = (f" | Rank: {total_loss_rank / len(train_dataset):.4f}"
+                     f" | Estac: {total_loss_esta / len(train_dataset):.5f}")
+        if lotes_descartados:
+            extra += f" | descartados: {lotes_descartados}"
+        print(f"Época [{epoch+1:03d}/{epochs:03d}] | Train pKd: {avg_train_loss_pkd:.4f} | Train Phys: {avg_train_loss_phys:.4f}{extra} | Val pKd: {avg_val_loss_pkd:.4f} | LR: {current_lr:.6f}")
         
         # =========================================================================
         # EARLY STOPPING E CHECKPOINTING DE MELHOR MODELO

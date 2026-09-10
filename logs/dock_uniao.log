@@ -1,0 +1,27 @@
+[*] 285 complexos · bolso 'uniao' · 14 processos
+    25/285  (0 falhas)
+    50/285  (0 falhas)
+    75/285  (0 falhas)
+    100/285  (0 falhas)
+    125/285  (0 falhas)
+    150/285  (0 falhas)
+    175/285  (0 falhas)
+    200/285  (0 falhas)
+    225/285  (0 falhas)
+    250/285  (0 falhas)
+    275/285  (0 falhas)
+    285/285  (0 falhas)
+
+[+] 285 complexos, 22482 poses (79 por complexo)
+
+Docking power — CASF-2016, near-native = RMSD <= 2.0 Å, bolso 'uniao'
+
+score            top1 %   top2 %   top3 %   rho medio   RMSD top1
+-----------------------------------------------------------------
+PharmXAI-3D        41.8     56.5     70.2       0.278        3.39
+n_contatos         15.8     25.6     34.0       0.332        4.54
+LJ (proxy)         35.4     50.2     60.7       0.152        3.99
+-----------------------------------------------------------------
+acaso (top1)       25.2     — fração de poses near-native no conjunto
+
+[+] scores por pose em logs/dock_uniao.csv

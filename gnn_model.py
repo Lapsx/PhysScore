@@ -49,6 +49,79 @@ class ContinuousFilterConv(MessagePassing):
         # Conexão residual estrita (ResNet style) para evitar vanishing gradients
         return x + self.update_mlp(aggr_out)
 
+class CamadaDirecional(nn.Module):
+    """Bloco de mensagem + atualização com features vetoriais (estilo PaiNN).
+
+    **Por que existe.** As convoluções de filtro contínuo acima veem apenas
+    `||r_i - r_j||`. Distância não é ângulo, e a consequência é medida: uma ligação
+    de hidrogênio N-H···O vale muito a 180° e quase nada a 90°, com a MESMA
+    distância — o modelo não consegue distinguir os dois casos.
+
+    Isso aparece nas duas métricas do projeto, sempre na mesma metade:
+
+    | tarefa | distância basta | exige ângulo |
+    |---|---|---|
+    | afinidade | ordenar (rho 0,746) | acertar magnitude (slope 0,424) |
+    | pose | plausível vs. absurda (rho global 0,374) | escolher entre plausíveis (0,249) |
+
+    Nos dois casos o que falha é a discriminação fina. Não é coincidência.
+
+    **Como preserva a invariância.** Cada átomo carrega escalares `s` [N, F] e
+    vetores `v` [N, 3, F]. Os vetores giram junto com o complexo (equivariância),
+    mas só entram em `s` através de quantidades invariantes — a norma `||Vv||` e o
+    produto interno `<Uv, Vv>`. Como o readout consome apenas `s`, a saída continua
+    exatamente invariante a rotação e translação, como antes.
+
+    **Por que PaiNN e não DimeNet.** Capturar ângulo enumerando tripletos custa
+    O(E·k) e mataria o argumento central do projeto, que é fazer isto com ~127 mil
+    parâmetros. Aqui a direcionalidade emerge do produto interno entre vetores, sem
+    enumerar tripleto nenhum.
+    """
+
+    def __init__(self, node_dim=64, num_gaussians=32):
+        super().__init__()
+        self.F = node_dim
+        self.phi = nn.Sequential(
+            nn.Linear(node_dim, node_dim),
+            nn.SiLU(),
+            nn.Linear(node_dim, node_dim * 3),
+        )
+        self.W = nn.Linear(num_gaussians, node_dim * 3)
+        self.U = nn.Linear(node_dim, node_dim, bias=False)
+        self.V = nn.Linear(node_dim, node_dim, bias=False)
+        self.mlp_upd = nn.Sequential(
+            nn.Linear(node_dim * 2, node_dim),
+            nn.SiLU(),
+            nn.Linear(node_dim, node_dim * 3),
+        )
+
+    def forward(self, s, v, edge_index, rbf, versor):
+        F = self.F
+        j, i = edge_index[0], edge_index[1]
+
+        # ---- mensagem ----
+        filtro = self.W(rbf) * self.phi(s[j])            # [E, 3F]
+        f_s, f_vv, f_vs = filtro.split(F, dim=-1)
+
+        s = s + torch.zeros_like(s).index_add_(0, i, f_s)
+        msg_v = v[j] * f_vv.unsqueeze(1) + versor.unsqueeze(-1) * f_vs.unsqueeze(1)
+        v = v + torch.zeros_like(v).index_add_(0, i, msg_v)
+
+        # ---- atualização ----
+        Uv, Vv = self.U(v), self.V(v)                    # [N, 3, F]
+        # O epsilon evita gradiente infinito quando um canal vetorial zera, o que
+        # acontece de fato na primeira camada (v começa em zero). Com 1e-8 a
+        # primeira derivada já vale 5.000 e a segunda ~1e11; sob double backward
+        # isso basta para desestabilizar. 1e-6 mantém a derivada abaixo de 500.
+        norma_Vv = torch.sqrt((Vv ** 2).sum(dim=1) + 1e-6)
+        a_vv, a_sv, a_ss = self.mlp_upd(
+            torch.cat([s, norma_Vv], dim=-1)).split(F, dim=-1)
+
+        v = v + Uv * a_vv.unsqueeze(1)
+        s = s + a_ss + a_sv * (Uv * Vv).sum(dim=1)       # <Uv, Vv> é invariante
+        return s, v
+
+
 class NodeEncoder(nn.Module):
     """Codifica cada átomo a partir de Z, das features químicas e do seu papel.
 
@@ -159,15 +232,27 @@ class PharmGeometricGNN(nn.Module):
     TIPOS_ENSAIO = ('Kd', 'Ki', 'IC50', 'desconhecido')
 
     def __init__(self, node_dim=64, num_gaussians=32, num_layers=4, dropout=0.2,
-                 usar_assay=False, assay_emb_dim=8):
+                 usar_assay=False, assay_emb_dim=8, usar_pose=False,
+                 usar_direcional=False):
         super(PharmGeometricGNN, self).__init__()
         
         self.node_encoder = NodeEncoder(max_z=100, z_emb_dim=32, phys_feat_dim=12, out_dim=node_dim, dropout=dropout)
         self.rbf_expansion = GaussianSmearing(start=0.0, stop=10.0, num_gaussians=num_gaussians)
         
-        self.layers = nn.ModuleList([
-            ContinuousFilterConv(node_dim, num_gaussians) for _ in range(num_layers)
-        ])
+        # `usar_direcional` troca as convoluções de filtro contínuo (só distância)
+        # por blocos com features vetoriais equivariantes (distância + direção).
+        # Desligado por padrão: o state_dict muda por completo, e os checkpoints
+        # existentes são de camadas escalares.
+        self.usar_direcional = usar_direcional
+        self.node_dim = node_dim
+        if usar_direcional:
+            self.layers = nn.ModuleList([
+                CamadaDirecional(node_dim, num_gaussians) for _ in range(num_layers)
+            ])
+        else:
+            self.layers = nn.ModuleList([
+                ContinuousFilterConv(node_dim, num_gaussians) for _ in range(num_layers)
+            ])
         
         self.readout = ReadoutPorPapel(node_dim)
         d_read = self.readout.out_dim
@@ -195,12 +280,52 @@ class PharmGeometricGNN(nn.Module):
             nn.Linear(32, 1)
         )
 
-    def forward(self, data_homo, assay=None):
+        # Predictor de Qualidade de Pose — separado do de afinidade, de propósito.
+        #
+        # Medido em 09/09/2026: o modelo é 2º de 35 em scoring power e 30º de 35 em
+        # docking power. O déficit não está na tendência global (rho 0,374 contra
+        # 0,334 do AutodockVina, à frente), e sim na vizinhança da pose nativa
+        # (0,249 contra 0,614). Ver a seção 4 do EXPERIMENTOS.md.
+        #
+        # Por que uma cabeça própria e não o pKd: pKd é energia LIVRE, e a pose é
+        # determinada por energia POTENCIAL. As duas tarefas puxam em direções
+        # diferentes — o AutodockVina faz 90,1% de top1 com R = 0,604, contra 47,0%
+        # e R = 0,754 aqui. Impor comportamento de energia sobre a cabeça de
+        # afinidade arriscaria o 0,754 sem necessidade.
+        self.usar_pose = usar_pose
+        if usar_pose:
+            self.pose_predictor = nn.Sequential(
+                nn.Linear(d_read, 64),
+                nn.SiLU(),
+                nn.Dropout(dropout),
+                nn.Linear(64, 1)
+            )
+
+    def forward(self, data_homo, assay=None, retornar_pose=False):
         x, edge_index, pos, batch = data_homo.x, data_homo.edge_index, data_homo.pos, data_homo.batch
         
-        # Se 'pos' exige gradiente (Fase de Relaxamento PINN), computa dinamicamente
-        # Caso contrário (Fase de Explicação), usa edge_attr explícito para Saliency Map
-        if pos.requires_grad:
+        # Se 'pos' exige gradiente (estacionariedade, relaxamento), computa
+        # dinamicamente. Caso contrário (Saliency Map), usa edge_attr explícito.
+        # No modo direcional o vetor da aresta é sempre necessário, então as
+        # distâncias saem dele em vez do edge_attr guardado.
+        versor = None
+        if self.usar_direcional:
+            j, i = edge_index[0], edge_index[1]
+            vetor = pos[i] - pos[j]
+            # O piso é FÍSICO, não numérico. A derivada segunda do versor escala
+            # com 1/d², e a estacionariedade da cabeça de pose usa double backward:
+            # com o piso em 1e-6 isso chega a 1e12 e o treino vira NaN na 6ª época
+            # (medido — a loss de estacionariedade foi a 703.684 antes de estourar).
+            #
+            # E a distância zero acontece de fato: 72 arestas em 3,7 milhões medem
+            # menos de 1e-6 Å, afetando 1,1% dos grafos — átomos sobrepostos que o
+            # PDB traz por conformação alternativa. Nenhuma ligação química real
+            # mede menos que ~0,9 Å, então 0,5 Å descarta só artefato. No caminho
+            # escalar isso passa batido porque o RBF satura em vez de explodir.
+            dist = torch.norm(vetor, p=2, dim=1).clamp(min=0.5)
+            versor = vetor / dist.unsqueeze(-1)
+            edge_attr = dist.view(-1, 1)
+        elif pos.requires_grad:
             row, col = edge_index
             edge_attr = torch.norm(pos[row] - pos[col], p=2, dim=1).view(-1, 1)
         else:
@@ -213,8 +338,15 @@ class PharmGeometricGNN(nn.Module):
         rbf_attr = self.rbf_expansion(edge_attr)
         
         # 3. Propagação Geométrica Modulada
-        for layer in self.layers:
-            x = layer(x, edge_index, rbf_attr)
+        if self.usar_direcional:
+            # v começa em zero: sem direção privilegiada antes da primeira mensagem
+            v = torch.zeros(x.shape[0], 3, self.node_dim,
+                            device=x.device, dtype=x.dtype)
+            for layer in self.layers:
+                x, v = layer(x, v, edge_index, rbf_attr, versor)
+        else:
+            for layer in self.layers:
+                x = layer(x, edge_index, rbf_attr)
             
         # 4. Readout por papel (ligante x proteína), com média e soma
         if batch is None:
@@ -251,5 +383,11 @@ class PharmGeometricGNN(nn.Module):
         # 5. Saídas Multi-Tarefa
         pkd_pred = self.predictor(x_graph)
         steric_pred = self.steric_predictor(x_graph)
-        
+
+        # A assinatura de 2 saídas é preservada por padrão: `explain.py`,
+        # `predict_custom.py` e `consenso_farmacoforo.py` desempacotam dois valores.
+        if retornar_pose:
+            pose_pred = self.pose_predictor(x_graph) if self.usar_pose else None
+            return pkd_pred, steric_pred, pose_pred
+
         return pkd_pred, steric_pred
