@@ -15,148 +15,215 @@ scoring function on affinity — at six times the inference cost.
 
 ---
 
-## Scope
+## What the three numbers mean
 
-Read this before anything else — the project started as a pharmacophore-explainability
-experiment (hence the old `PharmXAI` name) and became a scoring function along the way.
+CASF-2016 grades a scoring function on separate capabilities. They sound similar and
+measure very different things, so here they are in plain terms before any numbers.
 
-**What it is.** A scoring function. You give it a pocket and a posed ligand; it
-returns an affinity estimate. Its use is **ordering a library** — deciding which of
-a thousand candidates to test first.
+**Scoring power — "how strongly does this bind?"** Given a complex with the ligand in its
+correct, crystallographically determined pose, predict the binding affinity. Reported as
+Pearson **R** against experiment across 285 complexes. This is the easiest of the three:
+the pose is handed to you and you only estimate a magnitude.
 
-**What it is not.**
+**Docking power — "which of these poses is the right one?"** Given one ligand and ~79
+candidate poses of it inside the same pocket, put the correct one on top. Reported as
+**top1 %** — the fraction of the 285 targets where the highest-scored pose is within 2 Å
+of the crystal structure. This is what a scoring function must do to be useful *during*
+docking, and it is a question about geometry, not potency.
 
-- **Not a docking program.** It does not *search* for poses — it scores poses handed
-  to it. It has become good at *recognising* a correct one (8th of 35, see below),
-  which it was not before the physics constraints were added, but it still needs
-  smina, Vina, or Glide to generate candidates. It is a **re-scorer**, now a
-  competent one.
-- **Not an absolute affinity predictor.** A predicted $K_d$ can be off by a factor of
-  tens. Rank compounds with it; do not report a number from it.
-- **Not a pharmacophore tool.** The gradient maps it produces are
-  model-audit instruments, not database search queries. See *Model interpretation*.
+**Screening power — "which compound out of a library binds here?"** Given one target and
+a library of 285 ligands of which only 5 actually bind it, rank the library. Reported as
+**enrichment factor (EF)**: how many times better than random the method is at putting the
+real binders on top.
+
+> EF needs an example, because it is the least intuitive of the three. Testing the top 1%
+> of the library means testing **3 compounds out of 285**. Picking 3 at random, you would
+> expect 3 × (5/285) ≈ **0.05 actives** — almost always none. **EF1% = 1.0 means the
+> method is no better than that coin flip.** EF1% = 2.9 means it finds 2.9× more actives
+> than random; EF1% = 12.1, the best classical function, means 12×. The ceiling at top 1%
+> is 100. In bench terms: with EF1% = 4.0 you find an active in roughly 20% of targets by
+> testing three compounds each.
+
+A model can be excellent at one and poor at another, and this one is — which is most of
+what this README is about.
 
 ---
 
-## What the model actually does
+## Results
 
-**It ranks compounds well. It measures absolute affinity poorly.** That distinction
-decides what the tool is good for, so it is stated up front.
-
-Evaluated on the CASF-2016 core set — 285 complexes never seen during training or
-model selection:
-
-| metric | `lite` (1 model) | `full` (6 models) |
+| | `lite` (1 model, 144k params) | `full` (6 models, 1.3M) |
 |---|---|---|
-| Pearson R | 0.752 ± 0.013 | **0.819** |
-| RMSE ($pK_d$) | 1.470 ± 0.042 | **1.357** |
-| MAE | 1.207 | 1.105 |
-| slope of predicted vs. true | 0.458 ± 0.044 | 0.473 |
-| **top1 docking power** | 78.5% ± 1.7 | **83.9%** |
-| top3 docking power | 93.2% | 95.1% |
-| RMSD of selected pose | 1.46 Å | **1.10 Å** |
-| parameters | **144k** | 1.3M |
-| baseline (predicting the mean) | 2.170 RMSE | |
+| **scoring** — Pearson R | **0.752 ± 0.013** · 2nd of 35 | 0.819 · above 1st¹ |
+| **docking** — top1 % | 78.5 ± 1.7 · 14th of 35 | **83.9** · **8th of 35** |
+| **screening** — EF1% | 4.00 · 14th of 35 | **7.06** · **8th of 35** |
+| RMSE ($pK_d$) | 1.470 ± 0.042 | 1.357 |
+| slope, predicted vs. true | 0.458 ± 0.044 | 0.473 |
+| inference cost | 1× | 6× |
 
-`lite` figures are mean ± sd over three seeds. Docking power is the fraction of the
-285 targets where the top-scored pose, out of ~79 candidates, is within 2 Å of the
-crystal pose.
+¹ `full` is an **ensemble**; all 34 reference functions are single models, so that cell
+is not a like-for-like comparison and is deliberately not reported as "1st".
 
-**The slope is the number that characterises the model, and it is the one that has not
-moved.** An ideal predictor gives 1.0; at ~0.46 this one systematically under-predicts
-strong binders and over-predicts weak ones. With an RMSE of ~1.4 log units, a predicted
-$K_d$ can be off by a factor of tens. **Do not use it to report an absolute affinity.**
+`lite` figures are mean ± sd over three seeds. All numbers are on the CASF-2016 core set —
+285 complexes that never entered training or checkpoint selection.
 
-That is not a fixable calibration error, and it is worth being precise about why.
-Under a squared-error loss the optimal prediction is the conditional mean, which is
-*less* variable than the truth — compression is what a good imperfect predictor does.
-Since the slope of predicted-vs-true equals R·σ̂/σ, no linear rescaling can push it past
-**R**, and forcing it to 1.0 makes RMSE worse. Improving the slope means improving R.
-There is no post-hoc shortcut.
+---
 
-### Position among published scoring functions
+## Scope
 
-The CASF-2016 package ships reference scores for 34 scoring functions on these same
-285 complexes. Recomputing Pearson R for all of them under identical conditions:
+The project began as a pharmacophore-explainability experiment — hence the old `PharmXAI`
+name — and became a scoring function along the way.
 
-| rank | method | R |
-|---|---|---|
-| **—** | **PhysScore `full`** (6-model ensemble) | **0.819** |
-| 1 | deltaVinaRF20 | 0.816 |
-| **2** | **PhysScore `lite`** (single, 144k params) | **0.752** |
-| 3 | X-Score | 0.631 |
-| 4 | deltaSAS | 0.625 |
-| 7 | AutoDock Vina | 0.604 |
-| — | *median of the 34* | *0.537* |
+**What it is.** You give it a pocket and a ligand already posed inside it; it returns an
+affinity estimate in milliseconds.
 
-`lite` is second of 35 as a single 144k-parameter model. `full` edges past
-deltaVinaRF20, but it is an **ensemble** and every reference is a single model, so that
-row is marked `—` rather than 1st: it is not a like-for-like comparison and should not
-be reported as one.
+**What it is not.**
 
-The scope of the whole table matters too. The 34 references are the *classical* scoring
-functions bundled with CASF-2016. Deep-learning methods published since reach
-R ≈ 0.70–0.85 on the same set, so this model sits inside that band — with one to two
-orders of magnitude fewer parameters than the methods at its top.
+- **Not a docking program.** It does not *search* for poses. It got good at *recognising*
+  a correct one — 8th of 35, up from 30th before the physics constraints — but the
+  candidates must come from smina, Vina or Glide. It is a **re-scorer**.
+- **Not an absolute affinity predictor.** A predicted $K_d$ can be off by a factor of
+  tens. Rank with it; do not report a number from it.
+- **Not a pharmacophore tool.** The gradient maps it produces audit the model; they are
+  not database search queries. See *Model interpretation*.
+- **Not competitive as a virtual screening tool.** deltaVinaRF20 beats it on all three
+  capabilities. Read *What we found* before adopting it for anything.
 
-### Pose selection, and how the physics got it there
+---
 
-CASF-2016 grades a scoring function on four separate powers, and affinity is only the
-first. **Docking power** asks a different question: given a site and ~79 candidate poses
-of the same ligand, does the top-scored one match the crystal structure?
+## What we found
 
-The first measurement was bad. The original model — trained only to predict affinity —
-placed **30th of 35**, at 47.0% top1, barely above the contact-count baseline. The cause
-was not subtle: every PDBbind complex is a *correct* pose, so nothing in training ever
-asked the network to put a minimum at the native geometry.
+Three findings, in the order they were measured. The full bench record, including the
+negative results and the measurement traps, is in `EXPERIMENTOS.md` (Portuguese).
 
-Two physical constraints fixed it, both on a **separate head** so the affinity output
-was never touched:
+### 1. Physical constraints in the loss fixed pose selection
 
-- **Stationarity** — at the crystallographic pose, the net force and torque on the
-  ligand must vanish. This is the variational condition an energy satisfies at a
-  minimum, imposed on the 6 rigid-body degrees of freedom.
-- **Ranking** against rigidly perturbed poses, with the graph edges held fixed so that
-  contact count is *identical* between native and perturbed — closing the counting
-  shortcut before it exists.
+The first measurement was bad: **30th of 35** at docking power, 47.0% top1, barely above
+a baseline that just counts atomic contacts. The cause was not subtle — every complex in
+PDBbind is a *correct* pose, so nothing in training ever asked the network to put a
+minimum at the native geometry.
 
-Neither works alone: stationarity by itself is degenerate, since a constant function
-satisfies it perfectly.
+Splitting the deficit by scale located it precisely. The model already **beat AutoDock
+Vina** at the global trend (rho 0.374 vs 0.334) and lost 2.5× within 3 Å of the native
+pose (0.249 vs 0.614). It could separate a plausible pose from an absurd one and could not
+choose between two plausible ones.
 
-| | top1 % | |
-|---|---|---|
-| AutodockVina | 90.1 | 1st |
-| deltaVinaRF20 | 89.1 | 2nd |
-| ChemPLP@GOLD | 85.6 | 6th |
-| **PhysScore `full`** | **83.9** | **8th** |
-| GlideScore-XP | 83.5 | 9th |
-| **PhysScore `lite`** | **78.5** | **14th** |
-| *median of the 34 references* | *64.9* | |
-| contact-count baseline | 30.9 | |
-| chance | 25.2 | |
+Two constraints, on a **separate head** so the affinity output was never touched:
 
-**From 30th to 8th, with the affinity R unchanged** (0.754 → 0.752, within seed noise).
-Three controls back this up: the *affinity* head of the same checkpoint scores 40.4%,
-so the gain is not diffuse; the contact-count baseline stays at 30.9%, so it is not a
-size shortcut; and removing the crystal pose from the candidate set leaves 75.8%, so the
-model is judging docked geometry rather than recognising the crystal.
+- **Stationarity** — at the crystallographic pose the net force and torque on the ligand
+  must vanish. This is the variational condition an energy satisfies at a minimum, and it
+  is the closest well-posed analogue here to a PINN's PDE residual. (There is no PDE whose
+  solution is $pK_d$: it is a *free* energy, with entropy and desolvation inside.)
+- **Ranking** against rigidly perturbed poses, with the graph edges held fixed so contact
+  count is *identical* between native and perturbed — closing the counting shortcut before
+  it can be exploited.
 
-It still does not *search* for poses. In `predict_custom.py`, smina generates candidates
-and the network scores them — which is what a re-scorer does. `EXPERIMENTOS.md` §4 and
-§5 have the full measurements and the three measurement traps found along the way.
+Neither works alone: **stationarity by itself is degenerate**, because a constant function
+zeroes force and torque perfectly, and the pose head starts out almost constant.
 
-### Where the ensemble helps, and what it costs
+**Result: 47.0% → 78.5% top1 (83.9% ensemble), with R unchanged** (0.754 → 0.752, within
+seed noise). Three controls: the *affinity* head of the same checkpoint scores 40.4%, so
+the gain is not diffuse; the contact-count baseline stays at 30.9%, so it is not a size
+shortcut; removing the crystal pose from the candidate set still gives 75.8%, so the model
+judges docked geometry rather than recognising the crystal.
 
-Averaging six checkpoints — three scalar, three with directional features — gives the
-`full` numbers above. The mechanism is error decorrelation, and it is worth stating a
-tension openly: **the directional features were tested on their own and rejected**
-(§6 — no sustained gain in R, slope, or top1 across three paired seeds, at 2.3× the
-parameters). They earn their place here only because they fail *differently* from the
-scalar models, which is exactly what an ensemble needs. An ensemble of three scalar
-seeds reaches R = 0.789; adding the three directional ones takes it to 0.819.
+### 2. Richer geometry did not help — and that is the informative part
 
-Note also that `full` is an ensemble while all 34 reference functions are single
-models, so the affinity comparison flatters it.
+The obvious next step was to let the network see **angles**, not just distances. Hydrogen
+bonds are directional: N–H···O is worth a lot at 180° and almost nothing at 90°, at the
+same distance. The model was blind to that.
+
+Equivariant PaiNN-style layers were added (SE(3) invariance verified to 2.2e-08). Across
+**three paired seeds**, the effect on R, slope, RMSE, top1 and top3 was **null**. Only
+pose-ranking rho survived (+0.095, p = 0.037), which is not the metric that matters.
+
+And not for lack of use: ablating the vector channels shifts predictions by **2.14 $pK_d$**.
+The network consumes the angular information intensively and does not convert it into
+accuracy.
+
+Put beside the previous section, this is the most transferable thing the project produced:
+
+| | fine discrimination (rho within 3 Å) |
+|---|---|
+| baseline | 0.249 |
+| + richer representation (angles) | 0.236 |
+| **+ constraint on the objective (physics)** | **0.600** |
+
+**Giving the model more capacity did not work; changing what is asked of it did.** The
+data and the expressiveness were already there; the objective was missing.
+
+### 3. The model measures the molecule, not the pair
+
+This one recontextualises the headline number.
+
+Take the score the model gives each ligand **averaged over all 57 targets** — including
+the 56 wrong ones — and correlate it with true affinity:
+
+| | R |
+|---|---|
+| linear regression on 8 **ligand-only** descriptors (no protein at all) | **0.563** |
+| the model, with no knowledge of which target is correct | 0.548 |
+| the model, on its own target | 0.752 |
+| molecular weight alone | 0.496 |
+
+**Stripped of target identity, the model does not beat a linear regression over molecular
+descriptors.** Of the 0.752, roughly 0.56 is a property of the compound and only ~0.19
+comes from modelling the interaction.
+
+Three independent lines of evidence agree:
+
+1. **Variance ratio** — the affinity score varies 3.3× more across ligands than across
+   targets (0.305); the pose score is the reverse (1.253), i.e. it measures the pair.
+2. **The ligand-only baseline** above.
+3. **Ensembling does not help it.** Six models leave the affinity head's EF1% exactly
+   where it was (2.90 → 2.87) while nearly doubling the pose head's (4.00 → 7.06).
+   Averaging cancels random error, not systematic error — so an ensemble is a free test of
+   which kind dominates.
+
+**The cause is the label, not the architecture.** PDBbind's $pK_d$ is always a ligand's
+affinity for *its own* target. Nothing in training ever showed the same ligand against a
+wrong target, so "potent molecule" and "pair that binds" are indistinguishable in the
+data, and the model learns the easier one.
+
+This applies to **any** method trained on PDBbind, not just this one. The test that
+reveals it — comparing against a regression that uses only half the input — is trivial to
+run and rarely reported.
+
+#### The attempted fix, which failed
+
+Ligand decoys were generated — the same pocket with a compound that does not bind it — and
+added as a ranking loss. Before training, the model scored real binders at 6.22 and
+non-binders in the same pocket at 5.99: **a gap of 0.23 $pK_d$**, the most direct
+demonstration of the blindness.
+
+After training, the gap tripled (+1.89) **and screening got worse** (EF1% 2.90 → 2.30,
+R 0.752 → 0.725). That combination has one reading: the model learned to recognise the
+*artefact* of how the decoys were built, not complementarity. Rigid perturbation
+transferred in section 1 because it preserves the chemistry of the pair and only corrupts
+geometry; transplanting a whole ligand corrupts placement so crudely that the artefact
+dominates.
+
+Realistic negatives would require redocking. Whether they would help is genuinely open:
+if the blindness comes from the label, they might; if the task is intrinsically dominated
+by ligand properties — and a linear regression reaching 0.563 suggests much of it is —
+nothing fixes it.
+
+---
+
+## How to read these results
+
+**As a tool**, the honest summary is narrow. There is one case where it is competitive:
+ranking compounds by affinity when the poses are already given, where it is 2nd of 35 with
+144k parameters, ahead of X-Score (0.631) and AutoDock Vina (0.604). The niche is thin,
+because anyone holding poses has already run a docking program that returns a score.
+
+For virtual screening it does not beat the alternatives, and the two biases above should
+be weighed before trusting any of these numbers in production.
+
+**As a study**, it answers a question worth asking: *what do physical constraints teach a
+GNN, and what do they not?* One positive result, one negative result, and a diagnosis of
+why the second failed. The measurement discipline that produced them — trivial baselines
+that caught four separate shortcuts, paired seeds that killed a result which looked
+positive in a single run — is in `EXPERIMENTOS.md`.
 
 ---
 
@@ -397,17 +464,23 @@ R = 0.692 on a new one** — the latter still above the count baseline (0.592) a
 median classical function (0.537). Both were measured on the pre-physics scalar model;
 the homology penalty has not been re-measured for `lite` or `full`.
 
+**Much of the accuracy is a property of the ligand, not of the interaction.** Stripped of
+target identity the model scores R = 0.548, against 0.563 for a linear regression over
+eight ligand-only descriptors. See *What we found* §3 — this is the limitation with the
+widest consequences, and it applies to any model trained on PDBbind.
+
 **The model overfits early.** Best validation arrives around epoch 17–19 of a possible
 300, after which training loss keeps falling while validation rises. Note that rotational
 data augmentation would achieve nothing here — the network is SE(3)-invariant, so its
 output does not change under rotation. Coordinate noise would be the meaningful
 perturbation.
 
-**The slope has not moved.** 0.458 ± 0.044, essentially where it started. Adding
-directional (angular) features was the obvious attack and it failed: no sustained gain
-in R, slope, or top1 across three paired seeds, at 2.3× the parameters (§6). The model
-*uses* the angular information intensively — ablating it shifts predictions by 2.14
-$pK_d$ — it just does not convert into accuracy. This is the most serious open problem.
+**The slope has not moved**, and this is the most serious open problem. At 0.458 ± 0.044
+the model compresses predictions toward the mean. It is not a calibration error that
+rescaling can fix: under squared-error loss the optimal prediction *is* the conditional
+mean, and since the slope of predicted-vs-true equals R·σ̂/σ, no linear rescaling pushes it
+past **R** — forcing it to 1.0 only makes RMSE worse. **Improving the slope means
+improving R.** The obvious attack, angular features, failed (see *What we found* §2).
 
 **Ensemble numbers are not like-for-like.** `full` averages six models; all 34 CASF
 references are single models. Compare `lite` against them, not `full`.

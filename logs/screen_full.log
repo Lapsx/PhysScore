@@ -1,0 +1,148 @@
+=== FULL · cabeca de POSE · 05:54 ===
+[*] 57 alvos · 14 processos
+[*] 6 checkpoint(s), cabeça de pose
+    1/57  (0 falhas)
+    2/57  (0 falhas)
+    3/57  (0 falhas)
+    4/57  (0 falhas)
+    5/57  (0 falhas)
+    6/57  (0 falhas)
+    7/57  (0 falhas)
+    8/57  (0 falhas)
+    9/57  (0 falhas)
+    10/57  (0 falhas)
+    11/57  (0 falhas)
+    12/57  (0 falhas)
+    13/57  (0 falhas)
+    14/57  (0 falhas)
+    15/57  (0 falhas)
+    16/57  (0 falhas)
+    17/57  (0 falhas)
+    18/57  (0 falhas)
+    19/57  (0 falhas)
+    20/57  (0 falhas)
+    21/57  (0 falhas)
+    22/57  (0 falhas)
+    23/57  (0 falhas)
+    24/57  (0 falhas)
+    25/57  (0 falhas)
+    26/57  (0 falhas)
+    27/57  (0 falhas)
+    28/57  (0 falhas)
+    29/57  (0 falhas)
+    30/57  (0 falhas)
+    31/57  (0 falhas)
+    32/57  (0 falhas)
+    33/57  (0 falhas)
+    34/57  (0 falhas)
+    35/57  (0 falhas)
+    36/57  (0 falhas)
+    37/57  (0 falhas)
+    38/57  (0 falhas)
+    39/57  (0 falhas)
+    40/57  (0 falhas)
+    41/57  (0 falhas)
+    42/57  (0 falhas)
+    43/57  (0 falhas)
+    44/57  (0 falhas)
+    45/57  (0 falhas)
+    46/57  (0 falhas)
+    47/57  (0 falhas)
+    48/57  (0 falhas)
+    49/57  (0 falhas)
+    50/57  (0 falhas)
+    51/57  (0 falhas)
+    52/57  (0 falhas)
+    53/57  (0 falhas)
+    54/57  (0 falhas)
+    55/57  (0 falhas)
+    56/57  (0 falhas)
+    57/57  (0 falhas)
+
+Screening power — CASF-2016, 57 alvos, cabeça 'pose'
+cortes: top1% = 3 ligantes · top5% = 14 · top10% = 28
+
+corte        success %        EF   EF do acaso
+----------------------------------------------
+top 1%            24.6      7.06          1.00
+top 5%            31.6      3.31          1.00
+top 10%            38.6      2.40          1.00
+----------------------------------------------
+EF máximo possível no top 1%: 100 · top 5%: 20 · top 10%: 10
+
+[+] scores por par alvo–ligante em logs/screen_full_pose.csv
+
+=== FULL · cabeca de AFINIDADE · 12:25 ===
+[*] 57 alvos · 14 processos
+[*] 6 checkpoint(s), cabeça de afinidade
+    1/57  (0 falhas)
+    2/57  (0 falhas)
+    3/57  (0 falhas)
+    4/57  (0 falhas)
+    5/57  (0 falhas)
+    6/57  (0 falhas)
+    7/57  (0 falhas)
+    8/57  (0 falhas)
+    9/57  (0 falhas)
+    10/57  (0 falhas)
+    11/57  (0 falhas)
+    12/57  (0 falhas)
+    13/57  (0 falhas)
+    14/57  (0 falhas)
+    15/57  (0 falhas)
+    16/57  (0 falhas)
+    17/57  (0 falhas)
+    18/57  (0 falhas)
+    19/57  (0 falhas)
+    20/57  (0 falhas)
+    21/57  (0 falhas)
+    22/57  (0 falhas)
+    23/57  (0 falhas)
+    24/57  (0 falhas)
+    25/57  (0 falhas)
+    26/57  (0 falhas)
+    27/57  (0 falhas)
+    28/57  (0 falhas)
+    29/57  (0 falhas)
+    30/57  (0 falhas)
+    31/57  (0 falhas)
+    32/57  (0 falhas)
+    33/57  (0 falhas)
+    34/57  (0 falhas)
+    35/57  (0 falhas)
+    36/57  (0 falhas)
+    37/57  (0 falhas)
+    38/57  (0 falhas)
+    39/57  (0 falhas)
+    40/57  (0 falhas)
+    41/57  (0 falhas)
+    42/57  (0 falhas)
+    43/57  (0 falhas)
+    44/57  (0 falhas)
+    45/57  (0 falhas)
+    46/57  (0 falhas)
+    47/57  (0 falhas)
+    48/57  (0 falhas)
+    49/57  (0 falhas)
+    50/57  (0 falhas)
+    51/57  (0 falhas)
+    52/57  (0 falhas)
+    53/57  (0 falhas)
+    54/57  (0 falhas)
+    55/57  (0 falhas)
+    56/57  (0 falhas)
+    57/57  (0 falhas)
+
+Screening power — CASF-2016, 57 alvos, cabeça 'afinidade'
+cortes: top1% = 3 ligantes · top5% = 14 · top10% = 28
+
+corte        success %        EF   EF do acaso
+----------------------------------------------
+top 1%            10.5      2.87          1.00
+top 5%            33.3      2.22          1.00
+top 10%            45.6      1.90          1.00
+----------------------------------------------
+EF máximo possível no top 1%: 100 · top 5%: 20 · top 10%: 10
+
+[+] scores por par alvo–ligante em logs/screen_full_afin.csv
+=== fim: 19:19 ===

@@ -331,6 +331,37 @@ def train():
     # Inicializar o Modelo (Dropout ativo = 0.2 default)
     # Física de pose: desligada por padrão, para que `python train.py` continue
     # reproduzindo exatamente a linha de referência de R = 0,754.
+    # Decoys de LIGANTE: o mesmo bolso com um composto que não se liga a ele.
+    #
+    # Motivo (seção 7): privado da identidade do alvo, o modelo não supera uma
+    # regressão linear sobre descritores do ligante — R = 0,548 contra 0,563. Ele
+    # aprendeu "molécula potente", não "par que se liga", porque o pKd do PDBbind é
+    # sempre a afinidade de um ligante pelo SEU alvo e nada no treino jamais mostrou
+    # o mesmo ligante num alvo errado.
+    #
+    # A loss vai na cabeça de AFINIDADE, não numa quarta cabeça. No caso da pose a
+    # separação fazia sentido porque pose e afinidade são grandezas físicas
+    # diferentes; aqui não: "este ligante não se liga a este alvo" é uma afirmação
+    # sobre afinidade. Numa cabeça separada, a de afinidade continuaria tão cega ao
+    # alvo quanto está hoje — que é justamente o que se quer corrigir.
+    caminho_decoys = os.environ.get("PHARM_DECOYS", "")
+    lambda_decoy = float(os.environ.get("PHARM_LAMBDA_DECOY", "1.0"))
+    margem_decoy = float(os.environ.get("PHARM_MARGEM_DECOY", "2.0"))
+    decoys_lig = None
+    if caminho_decoys and os.path.exists(caminho_decoys):
+        from torch_geometric.data import InMemoryDataset
+
+        class _DecoySet(InMemoryDataset):
+            def __init__(self, caminho):
+                super().__init__(None)
+                self.data, self.slices = torch.load(caminho, weights_only=False)
+
+        decoys_lig = _DecoySet(caminho_decoys)
+        decoy_loader = DataLoader(decoys_lig, batch_size=32, shuffle=True)
+        decoy_iter = iter(decoy_loader)
+        print(f"[*] {len(decoys_lig)} decoys de ligante de {caminho_decoys} · "
+              f"peso {lambda_decoy}, margem {margem_decoy} pKd")
+
     usar_pose = os.environ.get("PHARM_POSE", "0") not in ("0", "", "off", "no")
     # Camadas com features vetoriais equivariantes (ver CamadaDirecional em
     # gnn_model.py). Desligado por padrão: muda o state_dict por completo, e os
@@ -395,6 +426,7 @@ def train():
         total_loss_rank = 0
         total_loss_esta = 0
         lotes_descartados = 0
+        total_loss_decoy = 0
         
         for data in train_loader:
             data_homo = data.to_homogeneous().to(device)
@@ -493,6 +525,26 @@ def train():
             # Restrito a `usar_direcional` de propósito: o caminho escalar chegou ao
             # R = 0,750 e aos 79,3% de top1 sem recorte nenhum, e mudá-lo agora
             # tornaria aqueles números irreprodutíveis.
+            # ---- decoys de ligante: ranking na cabeça de AFINIDADE ----
+            if decoys_lig is not None:
+                try:
+                    lote_d = next(decoy_iter)
+                except StopIteration:
+                    decoy_iter = iter(decoy_loader)
+                    lote_d = next(decoy_iter)
+                hd = lote_d.to_homogeneous().to(device)
+                pkd_d, _ = model(hd)
+
+                # O alvo do decoy é ficar ABAIXO do pKd real do complexo de onde o
+                # bolso veio, por uma margem. Não se usa um valor absoluto porque
+                # não se sabe quanto vale a não-ligação — sabe-se apenas que é
+                # menor. Margem em unidades de pKd: 2.0 = duas ordens de grandeza
+                # em Kd, o que separa binder de não-binder com folga.
+                alvo_ref = target_pkd.mean().detach()
+                l_decoy = torch.relu(pkd_d - (alvo_ref - margem_decoy)).mean()
+                loss = loss + lambda_decoy * l_decoy
+                total_loss_decoy += l_decoy.item() * lote_d.num_graphs
+
             # A norma é sempre calculada, mesmo sem recorte, porque é ela que
             # denuncia um gradiente podre. `clip_grad_norm_` devolve a norma ANTES
             # do recorte, então serve às duas coisas.
@@ -545,6 +597,8 @@ def train():
             # equilíbrio para a cabeça de pose.
             extra = (f" | Rank: {total_loss_rank / len(train_dataset):.4f}"
                      f" | Estac: {total_loss_esta / len(train_dataset):.5f}")
+        if decoys_lig is not None:
+            extra += f" | Decoy: {total_loss_decoy / len(train_dataset):.4f}"
         if lotes_descartados:
             extra += f" | descartados: {lotes_descartados}"
         print(f"Época [{epoch+1:03d}/{epochs:03d}] | Train pKd: {avg_train_loss_pkd:.4f} | Train Phys: {avg_train_loss_phys:.4f}{extra} | Val pKd: {avg_val_loss_pkd:.4f} | LR: {current_lr:.6f}")

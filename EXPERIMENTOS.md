@@ -1,7 +1,7 @@
 # Registro experimental — PharmXAI-3D
 
 Notas de bancada das medições feitas em 04/09/2026 (seções 1–3) e 09/09/2026
-(seções 4 a 6). O `README.md` descreve o que o modelo é e faz; este documento registra
+(seções 4 a 8). O `README.md` descreve o que o modelo é e faz; este documento registra
 **como os números foram obtidos, o que foi testado e descartado, e o que cada
 resultado autoriza a afirmar**.
 
@@ -70,6 +70,19 @@ elas pareciam entregar o melhor R do projeto (0,768) e a primeira melhora do slo
 Sobra um único efeito — a ordenação global de poses — que não é a métrica de uso, ao
 custo de 2,3× os parâmetros. **O resultado sustentado do projeto continua sendo o da
 seção 5.**
+
+A seção 7 mede a terceira capacidade, **screening power**, e o achado principal não é a
+posição (14ª de 35, EF1% 4,00 contra mediana 3,19) e sim o diagnóstico por trás dela:
+
+| | R |
+|---|---|
+| baseline: regressão linear sobre 8 descritores **só do ligante** | **0,563** |
+| modelo, sem saber qual é o alvo certo | 0,548 |
+| modelo, no seu próprio alvo | 0,752 |
+
+**Privado da identidade do alvo, o modelo não supera uma regressão sobre descritores da
+molécula.** Dos 0,752, cerca de 0,56 é propriedade do ligante e ~0,19 vem de modelar a
+interação. É o segundo viés quantificado do benchmark, ao lado da homologia da seção 3.
 
 Um ensemble heterogêneo dos seis checkpoints chega a **R = 0,819**, mas com 4× a
 inferência e sem o argumento de eficiência.
@@ -649,7 +662,233 @@ assim não converte — é mais informativo que o número em si.
 
 ---
 
-## 7. Regras de medição que emergiram
+## 7. Screening power: o modelo mede a molécula, não o par
+
+A seção 4 nasceu de uma alegação sem medição — o `README.md` dizia que o modelo era uma
+scoring function, e docking power nunca tinha sido testado. Esta seção nasce da mesma
+forma. O `README.md` dizia:
+
+> *"Use it to order a library, which is what a Spearman ρ of 0.746 supports."*
+
+O ρ de 0,746 **não** mede isso. Ele é ranking dentro do core set, com poses
+cristalográficas e um ligante por alvo. Ordenar uma biblioteca é a terceira capacidade
+do CASF-2016 — **screening power** — e ela nunca tinha sido medida.
+
+### O protocolo
+
+57 alvos × 285 ligantes × ~100 poses dockadas = **1,62 milhão de avaliações**. Para
+cada alvo: pontuar todas as poses, tomar o melhor score de cada ligante, ordenar os 285
+e perguntar se o melhor binder conhecido aparece no topo, e quantos dos ativos
+conhecidos sobem junto (fator de enriquecimento, EF; 1,0 é o acaso).
+
+O bolso é fixo por alvo, definido pela pose cristalográfica do ligante nativo daquele
+alvo — os 285 candidatos são dockados no mesmo sítio, e um bolso que se recentrasse em
+cada candidato daria a todos um encaixe sob medida. Mesma correção da seção 4.
+
+Custa ~12 min em 14 processos, muito menos que o volume sugere: o parse da proteína é
+feito uma vez por alvo e amortizado entre os 285 candidatos, enquanto no docking power
+ele se repetia a cada complexo.
+
+### O resultado, e a surpresa
+
+| score usado | success top1% | EF1% | success top10% | EF10% |
+|---|---|---|---|---|
+| cabeça de **afinidade** | 5,3% | 2,90 | 33,3% | 1,37 |
+| **cabeça de pose** | **14,0%** | **4,00** | **35,1%** | **2,26** |
+| híbrido (pose escolhe, afinidade pontua) | 8,8% | 3,31 | 38,6% | 1,85 |
+
+**A cabeça de pose vence a de afinidade em achar ligantes**, e por larga margem. Ela
+nunca viu um rótulo de afinidade. O híbrido — que seria o pipeline realista, dockar,
+escolher a geometria plausível, estimar potência — fica no meio e não ajuda.
+
+Contra as 34 referências, recomputadas com a mesma métrica: **14ª de 35**, com EF1% de
+4,00 contra mediana de 3,19. O topo (deltaVinaRF20 12,09, ChemPLP 11,91) está três
+vezes à frente.
+
+### O ensemble corrige variância, não viés
+
+Repetindo a medição com o nível `full` (6 checkpoints):
+
+| | EF1% `lite` | EF1% `full` | ganho |
+|---|---|---|---|
+| cabeça de **afinidade** | 2,90 | **2,87** | **nenhum** |
+| cabeça de **pose** | 4,00 | **7,06** | **+77%** |
+
+Seis modelos, seis vezes o custo de inferência, e a cabeça de afinidade fica exatamente
+onde estava. A de pose quase dobra o enriquecimento e sobe da 14ª para a **8ª de 35**,
+logo atrás do AutodockVina (7,70).
+
+**Esta é uma confirmação independente do diagnóstico acima, por um mecanismo diferente.**
+Média de modelos cancela erro aleatório, não erro sistemático. Se os seis modelos
+cometem o *mesmo* engano — medir a potência da molécula em vez da complementaridade do
+par —, os erros são correlacionados e a média não tem o que cancelar. É exatamente o
+que se observa. Já o erro da cabeça de pose é ruído de estimativa, e ali o ensemble
+funciona como se espera.
+
+A assimetria entre as duas cabeças **aumenta** com o ensemble: 1,38× no `lite`, 2,46×
+no `full`.
+
+Uma ressalva de leitura: o *success rate* da cabeça de afinidade subiu de 5,3% para
+10,5%, o que parece contradizer. Com 57 alvos isso é a diferença entre 3 e 6 alvos, ou
+seja, ruído. O EF1% agrega todos os ativos conhecidos em vez de só o melhor binder, e é
+o número estável — ele não se moveu.
+
+### Por que a cabeça de pose ganha: o modelo é cego ao alvo
+
+A explicação é medível. Para cada score, a variância ao **trocar o alvo** mantendo o
+ligante, contra a variância **entre ligantes** dentro de um alvo:
+
+| | var. ao trocar o alvo | var. entre ligantes | razão |
+|---|---|---|---|
+| cabeça de afinidade | 0,149 | 0,489 | **0,305** |
+| cabeça de pose | 0,031 | 0,025 | **1,253** |
+
+A cabeça de afinidade varia **3,3× mais entre ligantes do que entre alvos**: ela
+responde "esta molécula é potente", quase ignorando em que proteína está. A cabeça de
+pose é o oposto — sensível ao alvo, porque complementaridade estérica é uma propriedade
+do *par*. Screening exige exatamente isso, e por isso ela ganha.
+
+A causa é o rótulo: o pKd do PDBbind é a afinidade de cada ligante pelo **seu próprio**
+alvo. Nada no treino jamais mostrou o mesmo ligante num alvo errado, então "ligante
+potente" e "par que se liga" são indistinguíveis nos dados.
+
+### Quanto do R = 0,752 é a molécula sozinha
+
+O teste direto. Tomar o score que o modelo dá a cada ligante **em média sobre os 57
+alvos** — incluindo os 56 errados — e correlacionar com o pKd verdadeiro:
+
+| | R |
+|---|---|
+| baseline: regressão linear sobre 8 descritores **só do ligante** | **0,563** |
+| modelo, score médio sobre 57 alvos (sem saber qual é o certo) | 0,548 |
+| modelo, no seu próprio alvo | **0,752** |
+| só peso molecular | 0,496 |
+| só número de átomos pesados | 0,500 |
+
+**Privado da identidade do alvo, o modelo não supera uma regressão linear sobre
+descritores do ligante** — 0,548 contra 0,563. Peso molecular sozinho já entrega 0,496.
+
+Isto decompõe o número principal do projeto: dos 0,752, algo como **0,56 é propriedade
+da molécula**, capturável por regressão trivial sem proteína nenhuma, e cerca de
+**0,19 vem de modelar a interação** com aquele alvo específico.
+
+Os 8 descritores são número de átomos pesados, massa, logP, doadores, aceptores,
+ligações rotacionáveis, TPSA e contagem de anéis.
+
+### O que isso muda, e o que não muda
+
+**Não invalida o R = 0,752.** O número está medido corretamente, o core set nunca
+entrou no treino nem na seleção, e as 34 referências enfrentam o mesmo benchmark com o
+mesmo viés. A comparação continua válida.
+
+**Mas recontextualiza o que ele significa.** Boa parte vem de aprender que certas
+moléculas são potentes, não de modelar a interação. Somado à seção 3 — nenhum alvo do
+benchmark é novo para o modelo —, são dois vieses independentes na mesma direção, e
+agora ambos quantificados: **0,053 de R** vem de homologia de sequência, e **~73% do R**
+sobrevive sem identidade do alvo.
+
+**Explica dois resultados que estavam soltos.** O screening power fraco da cabeça de
+afinidade, e o fracasso das features direcionais na seção 6: se o sinal dominante é
+propriedade do ligante, refinar a geometria da interação melhora justamente a parte
+pequena.
+
+**E aponta a intervenção.** Falta ao treino o análogo do que a estacionariedade fez pela
+pose: exemplos negativos. Decoys de **ligante** — o mesmo alvo com compostos que não se
+ligam — forçariam a discriminar pares em vez de moléculas. Ver seção 10.
+
+---
+
+## 8. Decoys de ligante: a correção que não transferiu
+
+A seção 7 deixou um diagnóstico e uma intervenção óbvia. O diagnóstico: o modelo mede a
+molécula e não o par, porque o pKd do PDBbind é sempre a afinidade de um ligante pelo
+**seu próprio** alvo e nada no treino jamais mostrou o mesmo ligante num alvo errado. A
+intervenção: fornecer os exemplos negativos que faltam.
+
+**Não funcionou.** Vale registrar em detalhe, porque a razão do fracasso é informativa e
+porque o desenho parecia sólido.
+
+### O que foi feito
+
+`gerar_decoys_ligante.py` constrói o par (bolso do complexo *i*, ligante do complexo *j*)
+por **transplante geométrico**, direto sobre os grafos já processados: toma os átomos do
+ligante de *j*, rotaciona ao acaso, translada para o centroide do ligante de *i* e refaz
+as arestas de interação. Um filtro de composição de bolso rejeita pares cujos sítios são
+quase idênticos, que provavelmente seriam o mesmo alvo.
+
+Gerados 6.000 decoys a partir de 3.000 complexos em 9,8 s (1.269 rejeitados pelo filtro,
+17 descartados por não ter contato). O arquivo ocupa 178 MB usando
+`InMemoryDataset.collate` — salvar a lista de objetos `HeteroData` direto custaria 16×
+mais, porque o pickle de cada objeto carrega a estrutura do PyG junto.
+
+A loss é de ranking com margem, **na cabeça de afinidade**. A escolha é deliberada e
+difere da seção 5: lá a cabeça separada fazia sentido porque pose e afinidade são
+grandezas físicas distintas; aqui "este ligante não se liga a este alvo" é uma afirmação
+*sobre afinidade*, e numa cabeça separada a de afinidade continuaria tão cega ao alvo
+quanto antes — que é justamente o que se queria corrigir.
+
+### A medição de partida
+
+Antes de treinar, o modelo da seção 5 avaliado nos decoys:
+
+| | pKd previsto |
+|---|---|
+| nativos (binders reais) | 6,22 |
+| decoys (não-binders no mesmo bolso) | 5,99 |
+| **diferença** | **+0,23** |
+
+**A evidência mais direta da cegueira ao alvo em todo o registro.** Um modelo que
+discriminasse pares daria vários pKd de diferença. Dá 0,23.
+
+### O resultado
+
+| | antes | depois |
+|---|---|---|
+| **EF1%** (screening, cabeça de afinidade) | 2,90 | **2,30** |
+| **R** (afinidade, CASF core) | 0,752 | **0,725** |
+| gap nativo − decoy, nos decoys de treino | +0,59 | **+1,89** |
+
+Falhou nos dois critérios estabelecidos de antemão: o EF1% tinha de subir acima de 2,90 e
+o R tinha de se manter. Piorou os dois.
+
+### Por que falhou
+
+As três linhas juntas dizem exatamente o que aconteceu. O modelo aprendeu a separar
+nativo de decoy **com folga** — o gap triplicou — e ao mesmo tempo piorou nos decoys do
+CASF. Só há uma leitura: **ele aprendeu a reconhecer o artefato do transplante, não
+complementaridade.**
+
+Era o risco registrado quando a rota foi escolhida: *"poses menos realistas; o modelo
+pode aprender a detectar transplante em vez de complementaridade"*. Os decoys do CASF vêm
+de docking real e têm geometria plausível; os nossos vêm de enfiar um ligante rotacionado
+no bolso, com clash e sem otimização. Separar os nossos é fácil e não ensina nada sobre
+os reais.
+
+**O precedente da seção 5 não se repetiu, e a diferença é clara em retrospecto.** Lá,
+perturbações rígidas sintéticas transferiram para decoys de docking real — mas uma
+perturbação rígida **preserva a química do par**: é o mesmo ligante, ligeiramente
+deslocado, e o que muda é só a geometria. O transplante troca o ligante inteiro, e aí o
+artefato de posicionamento domina qualquer sinal de complementaridade.
+
+### O que isso deixa estabelecido, e o que não
+
+**O diagnóstico da seção 7 continua de pé.** As três evidências — razão de variância
+0,305 contra 1,253, baseline de ligante em 0,563, e o ensemble que não move a cabeça de
+afinidade — não dependem deste experimento.
+
+**O que se aprendeu é que a correção não é barata.** Exemplos negativos só ensinam se
+forem fisicamente realistas, o que exige redocking com smina (~3 h em 16 núcleos), não
+transplante.
+
+**E há uma dúvida de fundo que pesa contra gastar essas 3 h.** Se a cegueira ao alvo vem
+do rótulo, decoys realistas podem resolver. Mas se vem de a tarefa ser intrinsecamente
+dominada por propriedades do ligante — e uma regressão linear sobre oito descritores
+atinge R = 0,563 sem ver proteína nenhuma —, nenhum decoy resolve. As duas hipóteses
+predizem o mesmo fracasso aqui, e separá-las exigiria o experimento caro.
+
+---
+
+## 9. Regras de medição que emergiram
 
 Registradas porque cada uma custou uma conclusão errada antes de ser aprendida.
 
@@ -719,6 +958,31 @@ gradiente NaN — `sqrt(0)` é o caso canônico. O check tem de ser na norma do 
 depois do backward; caso contrário o NaN entra nos pesos e o descarte passa a proteger
 um modelo já morto, com a validação congelada e todos os lotes caindo.
 
+**Um exemplo negativo sintético só ensina se o que ele tem de errado for o que você
+quer que o modelo detecte.** Perturbação rígida transferiu (seção 5) porque preserva a
+química do par e erra só a geometria — que é o que se queria ensinar. Transplante de
+ligante não transferiu (seção 8) porque erra o posicionamento de forma grosseira, e o
+modelo aprendeu a detectar isso em vez de complementaridade. O sintoma é diagnóstico:
+separar bem os decoys de treino **e** piorar nos de teste.
+
+**Ensemble que não melhora nada é diagnóstico de viés.** Seis checkpoints não moveram o
+EF1% da cabeça de afinidade (2,90 → 2,87) e quase dobraram o da cabeça de pose
+(4,00 → 7,06). Média cancela erro aleatório, não erro sistemático: se todos os modelos
+erram do mesmo jeito, não há o que cancelar. Um ensemble é, de graça, um teste de qual
+dos dois tipos de erro domina.
+
+**O baseline trivial certo pode não usar metade da entrada.** A seção 1 comparou o GNN
+com uma regressão sobre contagens do complexo. A seção 7 comparou com uma regressão
+sobre descritores **só do ligante**, sem proteína nenhuma — e o modelo, privado da
+identidade do alvo, não a superou (0,548 contra 0,563). Ao medir um modelo de
+interação, pergunte quanto do resultado sobrevive removendo um dos dois parceiros.
+
+**Uma alegação sobre utilidade no README é uma medição que falta.** Duas vezes seguidas:
+"é uma scoring function" levou ao docking power (30ª de 35, seção 4) e "serve para
+ordenar uma biblioteca" levou ao screening power (14ª de 35, seção 7). Frases sobre o
+que o modelo serve para fazer são hipóteses testáveis, e o pacote CASF-2016 já traz o
+teste pronto.
+
 **Um salto no número principal pede conferir o baseline trivial na mesma rodada.**
 Incluir a pose cristalográfica levou o modelo de 45,3% a 60,4% de top1 — e o
 `n_contatos` a 96,1%, denunciando que a pose fora identificável por tamanho. O ganho
@@ -727,7 +991,7 @@ registrado como resultado.
 
 ---
 
-## 8. Como reproduzir
+## 10. Como reproduzir
 
 `train.py` é controlado por variáveis de ambiente, todas opcionais:
 
@@ -820,27 +1084,130 @@ O recorte de gradiente (500) e o descarte de lotes com gradiente não-finito só
 quando `PHARM_DIRECIONAL=1`, de propósito: o caminho escalar chegou aos seus resultados
 sem eles, e ativá-los tornaria aqueles números irreprodutíveis.
 
+### Screening power (seção 7)
+
+Requer `decoys_screening` (8,3 GB descomprimido) e `power_screening` (1,6 GB) do
+`CASF-2016.tar.gz`. **Confira o espaço livre antes.**
+
+```bash
+tar xzf CASF-2016.tar.gz CASF-2016/decoys_screening CASF-2016/power_screening
+
+# ~12 min em 14 processos para um checkpoint; ~75 min para o ensemble de 6
+python3 screening_power.py --jobs 14 --cabeca pose --pesos exp_pose_fisica.pth \
+                           --saida logs/screen_lite_pose.csv
+python3 comparar_screening.py logs/screen_lite_pose.csv
+```
+
+`--cabeca` aceita `afinidade`, `pose` e `hibrido` (a de pose escolhe a pose, a de
+afinidade pontua o ligante).
+
 ---
 
-## 9. O que fica em aberto
+## 11. Onde o projeto parou
+
+Encerrado em 11/09/2026, com o arco completo: um diagnóstico, uma correção que funcionou,
+uma que não funcionou, e a explicação de por quê.
+
+### As três capacidades medidas
+
+| capacidade | `lite` (144k par.) | `full` (6 modelos) |
+|---|---|---|
+| **scoring** — prever afinidade | 0,752 ± 0,013 · **2ª de 35** | 0,819 · acima do 1º¹ |
+| **docking** — escolher a pose certa | 78,5% ± 1,7 · 14ª | 83,9% · **8ª** |
+| **screening** — achar os ativos | EF1% 4,00 · 14ª | EF1% 7,06 · **8ª** |
+
+¹ ensemble contra modelos únicos; não é comparação direta.
+
+A quarta capacidade do CASF-2016, *reverse screening*, nunca foi medida.
+
+### O que o projeto estabeleceu
+
+**Restrição no objetivo rende; capacidade sozinha não.** A física de pose levou o docking
+power de 30ª para 8ª sem custo em afinidade (seção 5). As features direcionais deram ao
+modelo a capacidade de ver ângulo, ele usou a informação intensivamente — ablação desloca
+o pKd em 2,14 unidades — e não converteu em acerto (seção 6). O par de resultados é mais
+informativo que qualquer um deles isolado.
+
+**O benchmark tem dois vieses, agora quantificados.** Homologia vale 0,053 de R (seção 3),
+e ~73% do R sobrevive sem a identidade do alvo (seção 7). O segundo é o mais sério e o
+menos reportado na literatura: privado de saber qual é o alvo certo, o modelo não supera
+uma regressão linear sobre oito descritores do ligante (0,548 contra 0,563).
+
+**A correção da cegueira ao alvo não é barata.** Exemplos negativos por transplante
+geométrico não transferiram (seção 8). Fazê-los realistas exigiria redocking.
+
+### Como ferramenta
+
+Há um caso de uso em que é competitivo: **ordenar compostos por afinidade com as poses já
+dadas**, onde é 2ª de 35 com 144 mil parâmetros e milissegundos por complexo, à frente do
+X-Score (0,631) e do AutodockVina (0,604). O nicho é estreito — quem tem as poses já rodou
+um programa de docking que devolve um score junto.
+
+Fora disso não supera as alternativas. O deltaVinaRF20 é melhor nas três capacidades; o
+AutodockVina é melhor em pose, é gratuito e **gera** as poses, que este modelo não faz.
+
+### A pergunta que separaria estudo de ferramenta
+
+Ordenar uma **série congênere** — análogos de um mesmo lead, que é o que um químico
+medicinal de fato faz. A cegueira ao alvo importa menos ali, porque o alvo é fixo e a
+variação química é fina. O modelo pode ser bem melhor nessa tarefa do que o screening
+power sugere. **Não foi medido, então não se alega** — mas é o experimento que mudaria a
+resposta.
+
+### Estado do repositório
+
+Nada rodando. Não commitado: `screening_power.py`, `comparar_screening.py`,
+`gerar_decoys_ligante.py`, `decoys_ligante.pt` (178 MB, provavelmente não versionar), as
+seções 7 e 8, e os logs de screening.
+
+---
+
+## 12. O que fica em aberto
 
 Estado em 09/09/2026, depois das seções 5 e 6.
 
 ### Concluídos
 
-**Física de pose** (seção 5): o maior déficit medido, docking power em 30ª de 35,
-passou a 14ª. Sustentado em três sementes.
+**Física de pose** (seção 5): docking power de 30ª para 14ª de 35, sustentado em três
+sementes. É o resultado sólido do projeto.
 
-**Features direcionais** (seção 6): rejeitadas. Três sementes pareadas mostram efeito
-nulo em R, slope, RMSE, top1 e top3; sobra apenas o rho de ordenação de poses
-(+0,095, p = 0,037), que não é a métrica de uso, ao custo de 2,3× os parâmetros.
+**Features direcionais** (seção 6): rejeitadas. Efeito nulo em R, slope, RMSE, top1 e
+top3 sob sementes pareadas.
 
-**Sementes pareadas** para as duas seções acima.
+**Screening power** (seção 7): medido pela primeira vez. 14ª de 35, e o diagnóstico de
+que o modelo mede a molécula e não o par.
 
-O slope segue em **0,458 ± 0,044**, praticamente onde estava. A tentativa de atacá-lo
-por representação falhou, e ele volta a ser o item aberto mais sério.
+As três capacidades do `lite`, para referência: **2ª de 35** em scoring, **14ª** em
+docking, **14ª** em screening.
 
-### 1. Ensemble, decidido com cuidado
+### 1. Decoys de ligante — o item que a seção 7 tornou prioritário
+
+O diagnóstico: privado da identidade do alvo, o modelo não supera uma regressão sobre
+descritores do ligante (0,548 contra 0,563). A causa é o rótulo — o pKd do PDBbind é a
+afinidade de cada ligante pelo **seu próprio** alvo, e nada no treino jamais mostrou o
+mesmo ligante num alvo errado. "Molécula potente" e "par que se liga" são
+indistinguíveis nos dados.
+
+Falta o análogo do que a estacionariedade fez pela pose: **exemplos negativos**. O
+mesmo alvo com compostos que não se ligam, e uma loss que exija score menor para eles.
+
+Duas rotas para posicionar o decoy no bolso:
+
+| rota | custo | risco |
+|---|---|---|
+| **transplante geométrico** — alinhar o ligante de outro complexo ao bolso e relaxar com a energia física de `predict_custom.py` | milissegundos por decoy | poses menos realistas; o modelo pode aprender a detectar "transplante" em vez de complementaridade |
+| **redocking com smina** | ~3 h em 16 núcleos para 3.000 complexos × 2 decoys | realista, mas caro |
+
+**Começar pelo transplante.** O precedente é a seção 5: perturbações rígidas sintéticas,
+sem clash realista nem mudança conformacional, transferiram para decoys de docking real.
+Que transfira de novo não é garantido, mas é barato descobrir, e o screening power dá o
+teste — se o EF1% não subir, a rota está errada e aí vale pagar o smina.
+
+O controle obrigatório é o mesmo de sempre: se o modelo passar a distinguir decoy de
+nativo por tamanho ou contagem de contatos, o ganho é atalho. O baseline `n_contatos`
+tem de continuar onde está.
+
+### 2. Ensemble, decidido com cuidado
 
 R = 0,819 com seis checkpoints — acima do deltaVinaRF20 (0,816), primeiro colocado do
 CASF-2016. Mas é ensemble **heterogêneo**, e o custo desfaz o argumento de eficiência,
@@ -851,14 +1218,14 @@ provavelmente menos ganho, e sem os 2,3× de parâmetros que a seção 6 rejeito
 Registre-se que o slope **cai** no ensemble (0,499 → 0,473): a média comprime mais. R e
 slope não sobem juntos.
 
-### 2. Decoys reais por redocking
+### 3. Decoys reais de POSE por redocking
 
 A perturbação rígida da seção 5 não tem clash, nem mudança conformacional, nem a
 distribuição de poses que um programa de docking produz. Que tenha transferido é o
 resultado mais surpreendente do projeto. Redocking do conjunto de treino com smina
 (~7–14 h em 16 núcleos) diria quanto ainda há para ganhar.
 
-### 3. Decomposição física do score
+### 4. Decomposição física do score
 
 Substituir a predição crua por termos de forma funcional conhecida — LJ, ligação de H
 com dependência angular, hidrofóbico, dessolvatação, entropia torcional — com a GNN
@@ -870,7 +1237,7 @@ de ler ângulo não bastou — ele usa a informação e não a converte em acert
 decomposição física não oferece a capacidade, **impõe a forma funcional**, o que é uma
 aposta diferente e ainda não testada.
 
-### 4. Validação de qualidade de pose na seleção do checkpoint
+### 5. Validação de qualidade de pose na seleção do checkpoint
 
 O early stopping olha só a loss de afinidade. A cabeça de pose vai junto no estado em
 que estiver — o 79,6% é o que se obteve, não o que se otimizou.
